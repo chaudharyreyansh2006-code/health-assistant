@@ -220,7 +220,7 @@ export function AppSidebar({ user }: { user: User | undefined }) {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  className="w-full justify-center bg-primary text-primary-foreground hover:bg-primary/90 transition-all rounded-lg text-xs font-bold py-1.5 shadow-sm hover:text-primary-foreground"
+                  className="w-full justify-center bg-primary text-white hover:bg-primary/90 transition-all rounded-lg text-xs font-bold py-1.5 shadow-sm hover:text-primary-foreground"
                   onClick={() => setIsLoginOpen(true)}
                 >
                   Sign In
