@@ -71,8 +71,8 @@ export function AddMemberDialog({ familyId }: { familyId: string }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button className="relative flex flex-col items-center justify-center w-36 h-36 rounded-[2rem] bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_20px_40px_rgb(0,0,0,0.08)] transition-all duration-500 ease-out hover:-translate-y-2 gap-3 group">
-          <div className="p-3.5 rounded-full bg-black/5 dark:bg-white/5 text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground group-hover:scale-110 transition-all duration-500 ease-out">
+        <button className="relative flex flex-col items-center justify-center w-36 h-36 rounded-[2.25rem] bg-zinc-50/50 hover:bg-zinc-100/50 dark:bg-zinc-900/20 dark:hover:bg-zinc-900/60 border border-dashed border-zinc-200 dark:border-zinc-800 hover:border-zinc-350 dark:hover:border-zinc-700 transition-all duration-500 ease-out hover:scale-[1.03] gap-3 group">
+          <div className="p-3.5 rounded-full bg-zinc-100 dark:bg-zinc-800/85 text-muted-foreground group-hover:bg-foreground group-hover:text-background group-hover:scale-105 transition-all duration-500 ease-out">
             <PlusIcon className="size-5" />
           </div>
           <span className="text-[13px] font-semibold text-muted-foreground group-hover:text-foreground tracking-tight transition-colors duration-300">
