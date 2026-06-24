@@ -28,6 +28,7 @@ import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
 import { useSession } from "next-auth/react";
 import { LoginModal } from "./login-modal";
+import { guestRegex } from "@/lib/constants";
 
 export function ChatShell() {
   const pathname = usePathname();
@@ -55,10 +56,12 @@ export function ChatShell() {
     setIsLoginOpen,
   } = useActiveChat();
 
-  const { status: authStatus } = useSession();
+  const { data: session, status: authStatus } = useSession();
+  const isGuest = session?.user?.email ? guestRegex.test(session.user.email) : false;
+  const isAuthenticated = authStatus === "authenticated" && !isGuest;
 
   const handleSendMessage = async (msg: any) => {
-    if (authStatus === "unauthenticated") {
+    if (!isAuthenticated) {
       setIsLoginOpen(true);
       return;
     }
@@ -67,7 +70,7 @@ export function ChatShell() {
 
   const isChatRoute =
     pathname.startsWith("/chat") ||
-    (pathname === "/" && (authStatus === "unauthenticated" || memberId !== null));
+    (pathname === "/" && (!isAuthenticated || memberId !== null));
 
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(
     null

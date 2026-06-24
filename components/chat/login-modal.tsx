@@ -44,6 +44,9 @@ export function LoginModal() {
             toast.success("Successfully signed in!");
             await updateSession();
             setIsLoginOpen(false);
+            const params = new URLSearchParams(window.location.search);
+            const callbackUrl = params.get("callbackUrl") || "/";
+            router.push(callbackUrl);
             router.refresh();
           } else if (res.status === "failed") {
             toast.error("Invalid email or password!");
@@ -56,6 +59,9 @@ export function LoginModal() {
             toast.success("Account created and signed in!");
             await updateSession();
             setIsLoginOpen(false);
+            const params = new URLSearchParams(window.location.search);
+            const callbackUrl = params.get("callbackUrl") || "/";
+            router.push(callbackUrl);
             router.refresh();
           } else if (res.status === "user_exists") {
             toast.error("Account with this email already exists!");
