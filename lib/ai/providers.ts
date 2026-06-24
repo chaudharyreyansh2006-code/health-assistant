@@ -1,6 +1,6 @@
-import { customProvider, gateway } from "ai";
+import { google } from "@ai-sdk/google";
+import { customProvider } from "ai";
 import { isTestEnvironment } from "../constants";
-import { titleModel } from "./models";
 
 export const myProvider = isTestEnvironment
   ? (() => {
@@ -19,12 +19,13 @@ export function getLanguageModel(modelId: string) {
     return myProvider.languageModel(modelId);
   }
 
-  return gateway.languageModel(modelId);
+  // Direct Google Gemini provider — uses GOOGLE_GENERATIVE_AI_API_KEY env var
+  return google(modelId);
 }
 
 export function getTitleModel() {
   if (isTestEnvironment && myProvider) {
     return myProvider.languageModel("title-model");
   }
-  return gateway.languageModel(titleModel.id);
+  return google("gemini-3.1-flash-lite");
 }

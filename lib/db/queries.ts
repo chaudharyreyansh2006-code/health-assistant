@@ -10,6 +10,7 @@ import {
   gte,
   inArray,
   lt,
+  sql,
   type SQL,
 } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -23,6 +24,16 @@ import {
   chat,
   type DBMessage,
   document,
+  documentChunk,
+  type DocumentChunk,
+  family,
+  type Family,
+  familyMember,
+  type FamilyMember,
+  healthMemory,
+  type HealthMemory,
+  medicalDocument,
+  type MedicalDocument,
   message,
   type Suggestion,
   stream,
@@ -79,11 +90,13 @@ export async function saveChat({
   userId,
   title,
   visibility,
+  memberId,
 }: {
   id: string;
   userId: string;
   title: string;
   visibility: VisibilityType;
+  memberId?: string;
 }) {
   try {
     return await db.insert(chat).values({
@@ -92,10 +105,12 @@ export async function saveChat({
       userId,
       title,
       visibility,
+      memberId: memberId ?? null,
     });
   } catch (_error) {
     throw new ChatbotError("bad_request:database", "Failed to save chat");
   }
+
 }
 
 export async function deleteChatById({ id }: { id: string }) {
@@ -627,6 +642,325 @@ export async function getStreamIdsByChatId({ chatId }: { chatId: string }) {
     throw new ChatbotError(
       "bad_request:database",
       "Failed to get stream ids by chat id"
+    );
+  }
+}
+
+// ============================================================
+// Family Queries
+// ============================================================
+
+export async function createFamily({
+  name,
+  createdBy,
+}: {
+  name: string;
+  createdBy: string;
+}) {
+  try {
+    const [created] = await db
+      .insert(family)
+      .values({ name, createdBy })
+      .returning();
+    return created;
+  } catch (_error) {
+    throw new ChatbotError("bad_request:database", "Failed to create family");
+  }
+}
+
+export async function getFamiliesByUserId({
+  userId,
+}: {
+  userId: string;
+}) {
+  try {
+    return await db
+      .select()
+      .from(family)
+      .where(eq(family.createdBy, userId))
+      .orderBy(desc(family.createdAt));
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get families by user id"
+    );
+  }
+}
+
+export async function getFamilyById({ id }: { id: string }) {
+  try {
+    const [result] = await db
+      .select()
+      .from(family)
+      .where(eq(family.id, id))
+      .limit(1);
+    return result ?? null;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get family by id"
+    );
+  }
+}
+
+// ============================================================
+// Family Member Queries
+// ============================================================
+
+export async function addFamilyMember({
+  familyId,
+  name,
+  relationship,
+  dateOfBirth,
+  gender,
+}: {
+  familyId: string;
+  name: string;
+  relationship: string;
+  dateOfBirth?: string;
+  gender?: string;
+}) {
+  try {
+    const [created] = await db
+      .insert(familyMember)
+      .values({ familyId, name, relationship, dateOfBirth, gender })
+      .returning();
+    return created;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to add family member"
+    );
+  }
+}
+
+export async function getFamilyMembers({
+  familyId,
+}: {
+  familyId: string;
+}) {
+  try {
+    return await db
+      .select()
+      .from(familyMember)
+      .where(eq(familyMember.familyId, familyId))
+      .orderBy(asc(familyMember.createdAt));
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get family members"
+    );
+  }
+}
+
+export async function getFamilyMemberById({ id }: { id: string }) {
+  try {
+    const [result] = await db
+      .select()
+      .from(familyMember)
+      .where(eq(familyMember.id, id))
+      .limit(1);
+    return result ?? null;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get family member by id"
+    );
+  }
+}
+
+// ============================================================
+// Health Memory Queries
+// ============================================================
+
+export async function getHealthMemories({
+  memberId,
+}: {
+  memberId: string;
+}) {
+  try {
+    return await db
+      .select()
+      .from(healthMemory)
+      .where(eq(healthMemory.memberId, memberId))
+      .orderBy(asc(healthMemory.category));
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get health memories"
+    );
+  }
+}
+
+export async function upsertHealthMemory({
+  memberId,
+  category,
+  content,
+  source,
+}: {
+  memberId: string;
+  category: string;
+  content: string;
+  source: "agent" | "manual";
+}) {
+  try {
+    const normalizedNew = content.trim().replace(/\s+/g, " ");
+
+    // Check if entry already exists
+    const [existing] = await db
+      .select({ id: healthMemory.id, content: healthMemory.content })
+      .from(healthMemory)
+      .where(
+        and(
+          eq(healthMemory.memberId, memberId),
+          eq(healthMemory.category, category)
+        )
+      )
+      .limit(1);
+
+    if (existing) {
+      const normalizedCurrent = existing.content.trim().replace(/\s+/g, " ");
+      if (normalizedCurrent === normalizedNew) {
+        return { saved: false, reason: "unchanged" as const };
+      }
+
+      await db
+        .update(healthMemory)
+        .set({ content, source, updatedAt: new Date() })
+        .where(eq(healthMemory.id, existing.id));
+    } else {
+      await db.insert(healthMemory).values({
+        memberId,
+        category,
+        content,
+        source,
+      });
+    }
+
+    return { saved: true, reason: "updated" as const };
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to upsert health memory"
+    );
+  }
+}
+
+// ============================================================
+// Medical Document Queries
+// ============================================================
+
+export async function saveMedicalDocument({
+  memberId,
+  fileName,
+  url,
+  fileType,
+}: {
+  memberId: string;
+  fileName: string;
+  url: string;
+  fileType: string;
+}) {
+  try {
+    const [created] = await db
+      .insert(medicalDocument)
+      .values({ memberId, fileName, url, fileType })
+      .returning();
+    return created;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to save medical document"
+    );
+  }
+}
+
+export async function getMedicalDocumentsByMemberId({
+  memberId,
+}: {
+  memberId: string;
+}) {
+  try {
+    return await db
+      .select()
+      .from(medicalDocument)
+      .where(eq(medicalDocument.memberId, memberId))
+      .orderBy(desc(medicalDocument.uploadedAt));
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get medical documents"
+    );
+  }
+}
+
+// ============================================================
+// Document Chunk / Vector Search Queries
+// ============================================================
+
+export async function saveDocumentChunks({
+  chunks,
+}: {
+  chunks: { documentId: string; content: string; embedding: number[] }[];
+}) {
+  try {
+    return await db.insert(documentChunk).values(
+      chunks.map((c) => ({
+        documentId: c.documentId,
+        content: c.content,
+        embedding: c.embedding,
+      }))
+    );
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to save document chunks"
+    );
+  }
+}
+
+export async function similaritySearchChunks({
+  queryEmbedding,
+  memberId,
+  threshold = 0.4,
+  limit = 3,
+}: {
+  queryEmbedding: number[];
+  memberId: string;
+  threshold?: number;
+  limit?: number;
+}) {
+  try {
+    const vectorStr = `[${queryEmbedding.join(",")}]`;
+
+    const results = await db
+      .select({
+        content: documentChunk.content,
+        fileName: medicalDocument.fileName,
+        similarity:
+          sql<number>`1 - (${documentChunk.embedding} <=> ${vectorStr}::vector)`,
+      })
+      .from(documentChunk)
+      .innerJoin(
+        medicalDocument,
+        eq(documentChunk.documentId, medicalDocument.id)
+      )
+      .where(
+        and(
+          eq(medicalDocument.memberId, memberId),
+          sql`1 - (${documentChunk.embedding} <=> ${vectorStr}::vector) > ${threshold}`
+        )
+      )
+      .orderBy(
+        sql`${documentChunk.embedding} <=> ${vectorStr}::vector`
+      )
+      .limit(limit);
+
+    return results;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to perform similarity search"
     );
   }
 }

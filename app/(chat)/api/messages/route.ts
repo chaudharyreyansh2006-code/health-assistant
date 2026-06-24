@@ -39,5 +39,6 @@ export async function GET(request: Request) {
     visibility: chat.visibility,
     userId: chat.userId,
     isReadonly,
+    memberId: chat.memberId,
   });
 }

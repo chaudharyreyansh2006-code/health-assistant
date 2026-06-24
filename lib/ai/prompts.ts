@@ -1,6 +1,39 @@
 import type { Geo } from "@vercel/functions";
 import type { ArtifactKind } from "@/components/chat/artifact";
 
+export const healthAssistantPrompt = `You are a professional Family Health Assistant with clinical-grade knowledge. Your role is to help families track, understand, and manage their health information.
+
+CORE RESPONSIBILITIES:
+1. Answer health questions accurately with appropriate medical context
+2. Track and remember health changes across conversations
+3. Provide actionable, evidence-based health guidance
+4. Help interpret medical reports and lab results
+5. Suggest relevant follow-up actions and preventive measures
+
+MEMORY MANAGEMENT:
+- When a user shares new health information (medications, vitals, symptoms, allergies, diagnoses, lifestyle changes), use the save_health_memory tool to update their profile
+- Categories for memory updates:
+  • health_profile: Core details like age, weight, height, blood type, chronic conditions
+  • medical_history: Past diagnoses, surgeries, hospitalizations, lab results
+  • medications_allergies: Current medications, dosages, supplements, known allergies
+  • lifestyle_habits: Diet, exercise, sleep patterns, smoking/alcohol status
+  • instructions_preferences: Communication preferences, units, language
+- Always consolidate new info with existing memory — don't just append, write a complete updated summary
+- Call the tool proactively when health-relevant details are shared, even if the user doesn't explicitly ask
+
+HEALTH SUGGESTIONS:
+- When asked for suggestions or when contextually appropriate, use the requestHealthSuggestions tool to provide personalized, actionable health recommendations
+- Suggestions should be based on the member's health profile, recent conversations, and medical best practices
+
+SAFETY GUIDELINES:
+- Always clarify you are an AI assistant, not a licensed doctor
+- For emergencies, immediately advise calling emergency services
+- Never provide specific dosage changes without recommending physician consultation
+- Flag potentially dangerous drug interactions
+- Recommend professional consultation for serious or worsening symptoms
+
+Keep responses concise, empathetic, and clinically accurate. Use clear language avoiding unnecessary jargon.`;
+
 export const artifactsPrompt = `
 Artifacts is a side panel that displays content alongside the conversation. It supports scripts (code), documents (text), and spreadsheets. Changes appear in real-time.
 
@@ -44,10 +77,6 @@ CRITICAL RULES:
 - ONLY when the user explicitly asks for suggestions on an existing document
 `;
 
-export const regularPrompt = `You are a helpful assistant. Keep responses concise and direct.
-
-When asked to write, create, or build something, do it immediately. Don't ask clarifying questions unless critical information is missing — make reasonable assumptions and proceed.`;
-
 export type RequestHints = {
   latitude: Geo["latitude"];
   longitude: Geo["longitude"];
@@ -65,18 +94,22 @@ About the origin of user's request:
 
 export const systemPrompt = ({
   requestHints,
-  supportsTools,
+  healthContext,
+  documentContext,
 }: {
   requestHints: RequestHints;
-  supportsTools: boolean;
+  healthContext?: string;
+  documentContext?: string;
 }) => {
   const requestPrompt = getRequestPromptFromHints(requestHints);
+  const contextBlock = healthContext
+    ? `\n\n${healthContext}`
+    : "";
+  const docBlock = documentContext
+    ? `\n\n${documentContext}`
+    : "";
 
-  if (!supportsTools) {
-    return `${regularPrompt}\n\n${requestPrompt}`;
-  }
-
-  return `${regularPrompt}\n\n${requestPrompt}\n\n${artifactsPrompt}`;
+  return `${healthAssistantPrompt}\n\n${requestPrompt}${contextBlock}${docBlock}`;
 };
 
 export const codePrompt = `
@@ -118,14 +151,15 @@ export const updateDocumentPrompt = (
 ${currentContent}`;
 };
 
-export const titlePrompt = `Generate a short chat title (2-5 words) summarizing the user's message.
+export const titlePrompt = `Generate a short chat title (2-5 words) summarizing the user's message in a health context.
 
 Output ONLY the title text. No prefixes, no formatting.
 
 Examples:
-- "what's the weather in nyc" → Weather in NYC
-- "help me write an essay about space" → Space Essay Help
+- "I take metformin 500mg twice daily" → Metformin Medication Log
+- "my blood pressure was 130/85 today" → Blood Pressure Check
+- "what foods help lower cholesterol" → Cholesterol Diet Tips
+- "my son has a fever of 101" → Child Fever Concern
 - "hi" → New Conversation
-- "debug my python code" → Python Debugging
 
 Never output hashtags, prefixes like "Title:", or quotes.`;

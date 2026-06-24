@@ -47,6 +47,7 @@ type ActiveChatContextValue = {
   setCurrentModelId: (id: string) => void;
   showCreditCardAlert: boolean;
   setShowCreditCardAlert: Dispatch<SetStateAction<boolean>>;
+  memberId: string | null;
 };
 
 const ActiveChatContext = createContext<ActiveChatContextValue | null>(null);
@@ -82,6 +83,12 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   const [input, setInput] = useState("");
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
 
+  const [memberId, setMemberId] = useState<string | null>(null);
+  const memberIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    memberIdRef.current = memberId;
+  }, [memberId]);
+
   const { data: chatData, isLoading } = useSWR(
     isNewChat
       ? null
@@ -89,6 +96,20 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     fetcher,
     { revalidateOnFocus: false }
   );
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const mId = params.get("memberId");
+      if (mId) {
+        setMemberId(mId);
+      } else if (chatData?.memberId) {
+        setMemberId(chatData.memberId);
+      } else {
+        setMemberId(null);
+      }
+    }
+  }, [chatData, pathname]);
 
   const initialMessages: ChatMessage[] = isNewChat
     ? []
@@ -146,6 +167,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
               : { message: lastMessage }),
             selectedChatModel: currentModelIdRef.current,
             selectedVisibilityType: visibility,
+            memberId: memberIdRef.current ?? undefined,
             ...request.body,
           },
         };
@@ -264,6 +286,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       setCurrentModelId,
       showCreditCardAlert,
       setShowCreditCardAlert,
+      memberId,
     }),
     [
       chatId,
@@ -282,6 +305,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       votes,
       currentModelId,
       showCreditCardAlert,
+      memberId,
     ]
   );
 

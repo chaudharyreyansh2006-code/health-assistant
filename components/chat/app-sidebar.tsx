@@ -5,7 +5,12 @@ import {
   PanelLeftIcon,
   PenSquareIcon,
   TrashIcon,
+  UsersIcon,
+  HeartIcon,
+  UserIcon,
 } from "lucide-react";
+import useSWR from "swr";
+import { fetcher } from "@/lib/utils";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { User } from "next-auth";
@@ -24,6 +29,7 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -49,6 +55,11 @@ export function AppSidebar({ user }: { user: User | undefined }) {
   const { setOpenMobile, toggleSidebar } = useSidebar();
   const { mutate } = useSWRConfig();
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
+
+  const { data: families } = useSWR<any[]>(
+    user ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/families` : null,
+    fetcher
+  );
 
   const handleDeleteAll = () => {
     setShowDeleteAllDialog(false);
@@ -132,6 +143,72 @@ export function AppSidebar({ user }: { user: User | undefined }) {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+
+          {user && (
+            <SidebarGroup className="py-0">
+              <SidebarGroupLabel className="flex items-center justify-between px-2">
+                <span className="text-[10px] font-semibold text-sidebar-foreground/60 tracking-wider uppercase">
+                  Family Portals
+                </span>
+                <Link
+                  href="/family"
+                  className="hover:text-primary transition-colors text-[10px] text-muted-foreground"
+                  onClick={() => setOpenMobile(false)}
+                >
+                  Manage
+                </Link>
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-2">
+                  {families && families.map((fam) => (
+                    <div key={fam.id} className="space-y-1 px-1">
+                      <Link
+                        href={`/family/${fam.id}`}
+                        onClick={() => setOpenMobile(false)}
+                        className="flex items-center gap-2 px-2 py-1 text-xs font-semibold text-foreground/80 hover:text-primary hover:bg-sidebar-accent/50 rounded-md transition-colors"
+                      >
+                        <UsersIcon className="size-3.5 text-primary/70" />
+                        <span className="truncate">{fam.name}</span>
+                      </Link>
+                      <div className="pl-4 space-y-0.5 border-l border-sidebar-border ml-3">
+                        {fam.members && fam.members.map((mem: any) => (
+                          <Link
+                            key={mem.id}
+                            href={`/?memberId=${mem.id}`}
+                            onClick={() => setOpenMobile(false)}
+                            className="flex items-center gap-1.5 px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/30 rounded-md transition-colors"
+                          >
+                            <UserIcon className="size-3 text-muted-foreground/60" />
+                            <span className="truncate">{mem.name}</span>
+                          </Link>
+                        ))}
+                        {(!fam.members || fam.members.length === 0) && (
+                          <span className="text-[10px] pl-2 text-muted-foreground/50 italic block">
+                            No members
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {(!families || families.length === 0) && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        onClick={() => {
+                          setOpenMobile(false);
+                          router.push("/family");
+                        }}
+                        className="text-muted-foreground"
+                      >
+                        <HeartIcon className="size-4" />
+                        <span>Setup Family Portal</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
+
           <SidebarHistory user={user} />
         </SidebarContent>
         <SidebarFooter className="border-t border-sidebar-border pt-2 pb-3">

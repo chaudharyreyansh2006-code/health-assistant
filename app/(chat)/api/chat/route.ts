@@ -18,13 +18,11 @@ import {
   DEFAULT_CHAT_MODEL,
   getCapabilities,
 } from "@/lib/ai/models";
+import { fetchHealthContext, fetchDocumentContext } from "@/lib/ai/health-context";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { getLanguageModel } from "@/lib/ai/providers";
-import { createDocument } from "@/lib/ai/tools/create-document";
-import { editDocument } from "@/lib/ai/tools/edit-document";
-import { getWeather } from "@/lib/ai/tools/get-weather";
-import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
-import { updateDocument } from "@/lib/ai/tools/update-document";
+import { saveHealthMemory } from "@/lib/ai/tools/save-health-memory";
+import { requestHealthSuggestions } from "@/lib/ai/tools/request-health-suggestions";
 import { isProductionEnvironment } from "@/lib/constants";
 import {
   createStreamId,
@@ -68,8 +66,14 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { id, message, messages, selectedChatModel, selectedVisibilityType } =
-      requestBody;
+    const {
+      id,
+      message,
+      messages,
+      selectedChatModel,
+      selectedVisibilityType,
+      memberId,
+    } = requestBody;
 
     const [, session] = await Promise.all([
       checkBotId().catch(() => null),
@@ -103,6 +107,9 @@ export async function POST(request: Request) {
     let messagesFromDb: DBMessage[] = [];
     let titlePromise: Promise<string> | null = null;
 
+    // Determine the memberId: from request body, or from existing chat record
+    const activeMemberId = memberId ?? chat?.memberId ?? undefined;
+
     if (chat) {
       if (chat.userId !== session.user.id) {
         return new ChatbotError("forbidden:chat").toResponse();
@@ -114,6 +121,7 @@ export async function POST(request: Request) {
         userId: session.user.id,
         title: "New chat",
         visibility: selectedVisibilityType,
+        memberId: activeMemberId,
       });
       titlePromise = generateTitleFromUserMessage({ message });
     }
@@ -180,11 +188,24 @@ export async function POST(request: Request) {
       });
     }
 
-    const modelConfig = chatModels.find((m) => m.id === chatModel);
     const modelCapabilities = await getCapabilities();
     const capabilities = modelCapabilities[chatModel];
     const isReasoningModel = capabilities?.reasoning === true;
-    const supportsTools = capabilities?.tools === true;
+
+    // Find the last user message to query the vector DB
+    const lastUserMessage = uiMessages.findLast((m) => m.role === "user");
+    const lastUserMessageText = lastUserMessage?.parts
+      ?.filter((p) => typeof p === "object" && p !== null && "type" in p && p.type === "text" && "text" in p)
+      .map((p) => (p as { text: string }).text)
+      .join("") || "";
+
+    // Fetch health context and document chunks for the active family member
+    const [healthContext, documentContext] = await Promise.all([
+      activeMemberId ? fetchHealthContext(activeMemberId) : undefined,
+      activeMemberId && lastUserMessageText
+        ? fetchDocumentContext({ memberId: activeMemberId, query: lastUserMessageText })
+        : undefined,
+    ]);
 
     const modelMessages = await convertToModelMessages(uiMessages);
 
@@ -193,45 +214,20 @@ export async function POST(request: Request) {
       execute: async ({ writer: dataStream }) => {
         const result = streamText({
           model: getLanguageModel(chatModel),
-          system: systemPrompt({ requestHints, supportsTools }),
+          system: systemPrompt({ requestHints, healthContext, documentContext }),
           messages: modelMessages,
           stopWhen: stepCountIs(5),
-          experimental_activeTools:
-            isReasoningModel && !supportsTools
-              ? []
-              : [
-                  "getWeather",
-                  "createDocument",
-                  "editDocument",
-                  "updateDocument",
-                  "requestSuggestions",
-                ],
-          providerOptions: {
-            ...(modelConfig?.gatewayOrder && {
-              gateway: { order: modelConfig.gatewayOrder },
-            }),
-            ...(modelConfig?.reasoningEffort && {
-              openai: { reasoningEffort: modelConfig.reasoningEffort },
-            }),
-          },
+          experimental_activeTools: [
+            "saveHealthMemory",
+            "requestHealthSuggestions",
+          ],
           tools: {
-            getWeather,
-            createDocument: createDocument({
-              session,
-              dataStream,
-              modelId: chatModel,
-            }),
-            editDocument: editDocument({ dataStream, session }),
-            updateDocument: updateDocument({
-              session,
-              dataStream,
-              modelId: chatModel,
-            }),
-            requestSuggestions: requestSuggestions({
-              session,
-              dataStream,
-              modelId: chatModel,
-            }),
+            saveHealthMemory: activeMemberId
+              ? saveHealthMemory({ memberId: activeMemberId })
+              : saveHealthMemory({ memberId: "" }), // Fallback: tool won't work without member
+            requestHealthSuggestions: activeMemberId
+              ? requestHealthSuggestions({ memberId: activeMemberId })
+              : requestHealthSuggestions({ memberId: "" }),
           },
           experimental_telemetry: {
             isEnabled: isProductionEnvironment,

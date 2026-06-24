@@ -22,11 +22,14 @@ import { cn } from "@/lib/utils";
 import { Artifact } from "./artifact";
 import { ChatHeader } from "./chat-header";
 import { DataStreamHandler } from "./data-stream-handler";
+import { usePathname } from "next/navigation";
 import { submitEditedMessage } from "./message-editor";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
 
 export function ChatShell() {
+  const pathname = usePathname();
+
   const {
     chatId,
     messages,
@@ -46,7 +49,10 @@ export function ChatShell() {
     setCurrentModelId,
     showCreditCardAlert,
     setShowCreditCardAlert,
+    memberId,
   } = useActiveChat();
+
+  const isChatRoute = (pathname === "/" && memberId !== null) || pathname.startsWith("/chat");
 
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(
     null
@@ -68,6 +74,10 @@ export function ChatShell() {
       setAttachments([]);
     }
   }, [chatId, setArtifact]);
+
+  if (!isChatRoute) {
+    return null;
+  }
 
   return (
     <>
