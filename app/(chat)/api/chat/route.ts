@@ -112,8 +112,15 @@ export async function POST(request: Request) {
     let messagesFromDb: DBMessage[] = [];
     let titlePromise: Promise<string> | null = null;
 
-    // Determine the memberId: from request body, or from existing chat record
-    const activeMemberId = memberId ?? chat?.memberId ?? undefined;
+    // Determine the memberId: from request body, or from existing chat record.
+    // We validate that it's a real UUID before using it, otherwise we treat
+    // the chat as having no member and skip health-tool registration. This
+    // prevents the legacy "saveHealthMemory with memberId=''" code path that
+    // used to fail with a silent FK violation and let the LLM lie about it.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const rawMemberId = memberId ?? chat?.memberId ?? undefined;
+    const activeMemberId =
+      rawMemberId && UUID_RE.test(rawMemberId) ? rawMemberId : undefined;
 
     if (chat) {
       if (chat.userId !== session.user.id) {

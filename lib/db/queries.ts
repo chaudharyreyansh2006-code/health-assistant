@@ -835,6 +835,13 @@ export async function upsertHealthMemory({
   content: string;
   source: "agent" | "manual";
 }) {
+  // The previous version of this function silently swallowed the underlying
+  // DB error inside `catch (_error)` and re-threw a generic
+  // "Failed to upsert health memory" ChatbotError. That made every save
+  // failure look identical to the caller (and to the LLM) and made the
+  // assistant confidently claim it had saved data that was never persisted.
+  // We now log the full error server-side AND re-throw with the real cause
+  // so the tool can surface an actionable message.
   try {
     const normalizedNew = content.trim().replace(/\s+/g, " ");
 
@@ -870,10 +877,24 @@ export async function upsertHealthMemory({
     }
 
     return { saved: true, reason: "updated" as const };
-  } catch (_error) {
+  } catch (error) {
+    const underlying =
+      error instanceof Error ? error.message : "Unknown database error";
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String((error as { code: unknown }).code)
+        : "unknown";
+    console.error("[upsertHealthMemory] DB error", {
+      memberId,
+      category,
+      source,
+      code,
+      underlying,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     throw new ChatbotError(
       "bad_request:database",
-      "Failed to upsert health memory"
+      `Failed to upsert health memory (${code}): ${underlying}`,
     );
   }
 }
