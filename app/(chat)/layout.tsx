@@ -8,6 +8,7 @@ import { ChatShell } from "@/components/chat/shell";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { ActiveChatProvider } from "@/hooks/use-active-chat";
 import { auth } from "../(auth)/auth";
+import { guestRegex } from "@/lib/constants";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -28,26 +29,28 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 async function SidebarShell({ children }: { children: React.ReactNode }) {
   const [session, cookieStore] = await Promise.all([auth(), cookies()]);
   const isCollapsed = cookieStore.get("sidebar_state")?.value !== "true";
+  const isGuest = session?.user?.email ? guestRegex.test(session.user.email) : false;
+  const user = isGuest ? undefined : session?.user;
 
   return (
-    <SidebarProvider defaultOpen={!isCollapsed}>
-      <AppSidebar user={session?.user} />
-      <SidebarInset>
-        <Toaster
-          position="top-center"
-          theme="system"
-          toastOptions={{
-            className:
-              "!bg-card !text-foreground !border-border/50 !shadow-[var(--shadow-float)]",
-          }}
-        />
-        <Suspense fallback={<div className="flex h-dvh" />}>
-          <ActiveChatProvider>
+    <ActiveChatProvider>
+      <SidebarProvider defaultOpen={!isCollapsed}>
+        <AppSidebar user={user} />
+        <SidebarInset>
+          <Toaster
+            position="top-center"
+            theme="system"
+            toastOptions={{
+              className:
+                "!bg-card !text-foreground !border-border/50 !shadow-[var(--shadow-float)]",
+            }}
+          />
+          <Suspense fallback={<div className="flex h-dvh" />}>
             <ChatShell />
-          </ActiveChatProvider>
-        </Suspense>
-        {children}
-      </SidebarInset>
-    </SidebarProvider>
+          </Suspense>
+          {children}
+        </SidebarInset>
+      </SidebarProvider>
+    </ActiveChatProvider>
   );
 }

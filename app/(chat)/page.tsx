@@ -1,5 +1,6 @@
 import { auth } from "../(auth)/auth";
 import { redirect } from "next/navigation";
+import { guestRegex } from "@/lib/constants";
 import {
   getFamiliesByUserId,
   createFamily,
@@ -31,8 +32,9 @@ export const metadata = {
 
 export default async function Page({ searchParams }: Props) {
   const session = await auth();
-  if (!session?.user?.id) {
-    redirect("/login");
+  const isGuest = session?.user?.email ? guestRegex.test(session.user.email) : false;
+  if (!session?.user?.id || isGuest) {
+    return null;
   }
 
   const { memberId } = await searchParams;

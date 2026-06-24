@@ -1,4 +1,4 @@
-export const DEFAULT_CHAT_MODEL = "gemini-3-flash";
+export const DEFAULT_CHAT_MODEL = "gemini-3-flash-preview";
 
 export const titleModel = {
   id: "gemini-3.1-flash-lite",
@@ -47,7 +47,7 @@ export async function getCapabilities(): Promise<
       {
         tools: true,
         vision: true,
-        reasoning: model.id.includes("pro"),
+        reasoning: true,
       },
     ])
   );

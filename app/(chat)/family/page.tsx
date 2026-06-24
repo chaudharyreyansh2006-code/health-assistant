@@ -13,7 +13,7 @@ export const metadata = {
 export default async function FamilyPage() {
   const session = await auth();
   if (!session?.user?.id) {
-    redirect("/login");
+    redirect("/?showLogin=true");
   }
 
   const families = await getFamiliesByUserId({ userId: session.user.id });

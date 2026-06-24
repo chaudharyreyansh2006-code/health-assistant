@@ -9,7 +9,10 @@ import {
   EyeIcon,
   LockIcon,
   WrenchIcon,
+  Globe as GlobeIcon,
+  Link as LinkIcon,
 } from "lucide-react";
+import { useActiveChat } from "@/hooks/use-active-chat";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import {
@@ -108,6 +111,12 @@ function PureMultimodalInput({
   isLoading?: boolean;
 }) {
   const router = useRouter();
+  const {
+    webSearchEnabled,
+    setWebSearchEnabled,
+    urlContextEnabled,
+    setUrlContextEnabled,
+  } = useActiveChat();
   const { setTheme, resolvedTheme } = useTheme();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
@@ -526,6 +535,35 @@ function PureMultimodalInput({
               onModelChange={onModelChange}
               selectedModelId={selectedModelId}
             />
+            <Button
+              type="button"
+              variant="ghost"
+              className={cn(
+                "h-7 w-7 rounded-lg border p-1 transition-colors",
+                webSearchEnabled
+                  ? "bg-teal-500/10 text-teal-600 border-teal-500/20 hover:bg-teal-500/20 hover:text-teal-600 dark:text-teal-400 dark:border-teal-500/30"
+                  : "text-muted-foreground/50 border-border/40 hover:text-foreground"
+              )}
+              onClick={() => setWebSearchEnabled(!webSearchEnabled)}
+              title={webSearchEnabled ? "Disable Web Search Grounding" : "Enable Web Search Grounding"}
+            >
+              <GlobeIcon className="size-3.5" />
+            </Button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              className={cn(
+                "h-7 w-7 rounded-lg border p-1 transition-colors",
+                urlContextEnabled
+                  ? "bg-sky-500/10 text-sky-600 border-sky-500/20 hover:bg-sky-500/20 hover:text-sky-600 dark:text-sky-400 dark:border-sky-500/30"
+                  : "text-muted-foreground/50 border-border/40 hover:text-foreground"
+              )}
+              onClick={() => setUrlContextEnabled(!urlContextEnabled)}
+              title={urlContextEnabled ? "Disable URL Context Fetching" : "Enable URL Context Fetching"}
+            >
+              <LinkIcon className="size-3.5" />
+            </Button>
           </PromptInputTools>
 
           {status === "submitted" ? (

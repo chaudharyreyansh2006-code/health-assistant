@@ -21,9 +21,10 @@ import {
 import { fetchHealthContext, fetchDocumentContext } from "@/lib/ai/health-context";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { getLanguageModel } from "@/lib/ai/providers";
+import { google } from "@ai-sdk/google";
 import { saveHealthMemory } from "@/lib/ai/tools/save-health-memory";
 import { requestHealthSuggestions } from "@/lib/ai/tools/request-health-suggestions";
-import { isProductionEnvironment } from "@/lib/constants";
+import { guestRegex, isProductionEnvironment } from "@/lib/constants";
 import {
   createStreamId,
   deleteChatById,
@@ -73,6 +74,8 @@ export async function POST(request: Request) {
       selectedChatModel,
       selectedVisibilityType,
       memberId,
+      webSearchEnabled,
+      urlContextEnabled,
     } = requestBody;
 
     const [, session] = await Promise.all([
@@ -80,7 +83,8 @@ export async function POST(request: Request) {
       auth(),
     ]);
 
-    if (!session?.user) {
+    const isGuest = session?.user?.email ? guestRegex.test(session.user.email) : false;
+    if (!session?.user || isGuest) {
       return new ChatbotError("unauthorized:chat").toResponse();
     }
 
@@ -212,15 +216,26 @@ export async function POST(request: Request) {
     const stream = createUIMessageStream({
       originalMessages: isToolApprovalFlow ? uiMessages : undefined,
       execute: async ({ writer: dataStream }) => {
+        const activeTools: (
+          | "saveHealthMemory"
+          | "requestHealthSuggestions"
+          | "googleSearch"
+          | "urlContext"
+        )[] = ["saveHealthMemory", "requestHealthSuggestions"];
+
+        if (webSearchEnabled) {
+          activeTools.push("googleSearch");
+        }
+        if (urlContextEnabled) {
+          activeTools.push("urlContext");
+        }
+
         const result = streamText({
           model: getLanguageModel(chatModel),
           system: systemPrompt({ requestHints, healthContext, documentContext }),
           messages: modelMessages,
           stopWhen: stepCountIs(5),
-          experimental_activeTools: [
-            "saveHealthMemory",
-            "requestHealthSuggestions",
-          ],
+          experimental_activeTools: activeTools,
           tools: {
             saveHealthMemory: activeMemberId
               ? saveHealthMemory({ memberId: activeMemberId })
@@ -228,6 +243,15 @@ export async function POST(request: Request) {
             requestHealthSuggestions: activeMemberId
               ? requestHealthSuggestions({ memberId: activeMemberId })
               : requestHealthSuggestions({ memberId: "" }),
+            googleSearch: google.tools.googleSearch({}) as any,
+            urlContext: google.tools.urlContext({}) as any,
+          },
+          providerOptions: {
+            google: {
+              thinkingConfig: {
+                thinkingLevel: "high",
+              },
+            },
           },
           experimental_telemetry: {
             isEnabled: isProductionEnvironment,

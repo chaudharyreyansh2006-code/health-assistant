@@ -101,7 +101,7 @@ export function SidebarUserNav({ user }: { user: User }) {
                   }
 
                   if (isGuest) {
-                    router.push("/login");
+                    router.push("/?showLogin=true");
                   } else {
                     signOut({
                       redirectTo: "/",

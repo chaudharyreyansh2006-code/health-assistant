@@ -3,7 +3,7 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   createContext,
   type Dispatch,
@@ -48,6 +48,12 @@ type ActiveChatContextValue = {
   showCreditCardAlert: boolean;
   setShowCreditCardAlert: Dispatch<SetStateAction<boolean>>;
   memberId: string | null;
+  webSearchEnabled: boolean;
+  setWebSearchEnabled: Dispatch<SetStateAction<boolean>>;
+  urlContextEnabled: boolean;
+  setUrlContextEnabled: Dispatch<SetStateAction<boolean>>;
+  isLoginOpen: boolean;
+  setIsLoginOpen: Dispatch<SetStateAction<boolean>>;
 };
 
 const ActiveChatContext = createContext<ActiveChatContextValue | null>(null);
@@ -89,6 +95,20 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     memberIdRef.current = memberId;
   }, [memberId]);
 
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const webSearchEnabledRef = useRef(false);
+  useEffect(() => {
+    webSearchEnabledRef.current = webSearchEnabled;
+  }, [webSearchEnabled]);
+
+  const [urlContextEnabled, setUrlContextEnabled] = useState(false);
+  const urlContextEnabledRef = useRef(false);
+  useEffect(() => {
+    urlContextEnabledRef.current = urlContextEnabled;
+  }, [urlContextEnabled]);
+
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
+
   const { data: chatData, isLoading } = useSWR(
     isNewChat
       ? null
@@ -97,19 +117,26 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     { revalidateOnFocus: false }
   );
 
+  const searchParams = useSearchParams();
+  const memberIdFromUrl = searchParams.get("memberId");
+  const showLogin = searchParams.get("showLogin");
+  const showRegister = searchParams.get("showRegister");
+
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const mId = params.get("memberId");
-      if (mId) {
-        setMemberId(mId);
-      } else if (chatData?.memberId) {
-        setMemberId(chatData.memberId);
-      } else {
-        setMemberId(null);
-      }
+    if (memberIdFromUrl) {
+      setMemberId(memberIdFromUrl);
+    } else if (chatData?.memberId) {
+      setMemberId(chatData.memberId);
+    } else {
+      setMemberId(null);
     }
-  }, [chatData, pathname]);
+  }, [chatData, memberIdFromUrl]);
+
+  useEffect(() => {
+    if (showLogin === "true" || showRegister === "true") {
+      setIsLoginOpen(true);
+    }
+  }, [showLogin, showRegister]);
 
   const initialMessages: ChatMessage[] = isNewChat
     ? []
@@ -168,6 +195,8 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
             selectedChatModel: currentModelIdRef.current,
             selectedVisibilityType: visibility,
             memberId: memberIdRef.current ?? undefined,
+            webSearchEnabled: webSearchEnabledRef.current,
+            urlContextEnabled: urlContextEnabledRef.current,
             ...request.body,
           },
         };
@@ -287,6 +316,12 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       showCreditCardAlert,
       setShowCreditCardAlert,
       memberId,
+      webSearchEnabled,
+      setWebSearchEnabled,
+      urlContextEnabled,
+      setUrlContextEnabled,
+      isLoginOpen,
+      setIsLoginOpen,
     }),
     [
       chatId,
@@ -306,6 +341,9 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       currentModelId,
       showCreditCardAlert,
       memberId,
+      webSearchEnabled,
+      urlContextEnabled,
+      isLoginOpen,
     ]
   );
 

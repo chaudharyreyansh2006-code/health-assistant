@@ -23,6 +23,7 @@ import {
   SidebarHistory,
 } from "@/components/chat/sidebar-history";
 import { SidebarUserNav } from "@/components/chat/sidebar-user-nav";
+import { useActiveChat } from "@/hooks/use-active-chat";
 import {
   Sidebar,
   SidebarContent,
@@ -55,6 +56,7 @@ export function AppSidebar({ user }: { user: User | undefined }) {
   const { setOpenMobile, toggleSidebar } = useSidebar();
   const { mutate } = useSWRConfig();
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
+  const { setIsLoginOpen } = useActiveChat();
 
   const { data: families } = useSWR<any[]>(
     user ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/families` : null,
@@ -212,7 +214,20 @@ export function AppSidebar({ user }: { user: User | undefined }) {
           <SidebarHistory user={user} />
         </SidebarContent>
         <SidebarFooter className="border-t border-sidebar-border pt-2 pb-3">
-          {user && <SidebarUserNav user={user} />}
+          {user ? (
+            <SidebarUserNav user={user} />
+          ) : (
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  className="w-full justify-center bg-primary text-primary-foreground hover:bg-primary/90 transition-all rounded-lg text-xs font-bold py-1.5 shadow-sm hover:text-primary-foreground"
+                  onClick={() => setIsLoginOpen(true)}
+                >
+                  Sign In
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          )}
         </SidebarFooter>
         <SidebarRail />
       </Sidebar>

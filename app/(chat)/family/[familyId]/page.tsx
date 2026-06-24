@@ -17,7 +17,7 @@ type Props = {
 export default async function FamilyWorkspacePage({ params }: Props) {
   const session = await auth();
   if (!session?.user?.id) {
-    redirect("/login");
+    redirect("/?showLogin=true");
   }
 
   const { familyId } = await params;

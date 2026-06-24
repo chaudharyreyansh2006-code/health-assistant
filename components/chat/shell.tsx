@@ -26,6 +26,8 @@ import { usePathname } from "next/navigation";
 import { submitEditedMessage } from "./message-editor";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
+import { useSession } from "next-auth/react";
+import { LoginModal } from "./login-modal";
 
 export function ChatShell() {
   const pathname = usePathname();
@@ -50,9 +52,22 @@ export function ChatShell() {
     showCreditCardAlert,
     setShowCreditCardAlert,
     memberId,
+    setIsLoginOpen,
   } = useActiveChat();
 
-  const isChatRoute = (pathname === "/" && memberId !== null) || pathname.startsWith("/chat");
+  const { status: authStatus } = useSession();
+
+  const handleSendMessage = async (msg: any) => {
+    if (authStatus === "unauthenticated") {
+      setIsLoginOpen(true);
+      return;
+    }
+    return sendMessage(msg);
+  };
+
+  const isChatRoute =
+    pathname.startsWith("/chat") ||
+    (pathname === "/" && (authStatus === "unauthenticated" || memberId !== null));
 
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(
     null
@@ -146,7 +161,7 @@ export function ChatShell() {
                           });
                           setInput("");
                         }
-                      : sendMessage
+                      : handleSendMessage
                   }
                   setAttachments={setAttachments}
                   setInput={setInput}
@@ -180,6 +195,8 @@ export function ChatShell() {
       </div>
 
       <DataStreamHandler />
+
+      <LoginModal />
 
       <AlertDialog
         onOpenChange={setShowCreditCardAlert}
