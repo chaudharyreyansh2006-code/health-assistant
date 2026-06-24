@@ -33,15 +33,20 @@ export function DocumentUpload({ memberId }: { memberId: string }) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Support pdf and plain text files
+    // Support PDF and plain text files. We also accept legacy .txt/.pdf
+    // uploads by extension for browsers that don't always populate `type`.
     const validTypes = ["application/pdf", "text/plain"];
-    if (!validTypes.includes(file.type) && !file.name.endsWith(".txt") && !file.name.endsWith(".pdf")) {
+    if (
+      !validTypes.includes(file.type) &&
+      !file.name.endsWith(".txt") &&
+      !file.name.endsWith(".pdf")
+    ) {
       toast.error("Please upload a PDF or TXT file.");
       return;
     }
 
-    if (file.size > 8 * 1024 * 1024) {
-      toast.error("File size exceeds 8MB limit.");
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("File size exceeds the 10MB limit.");
       return;
     }
 
@@ -102,7 +107,7 @@ export function DocumentUpload({ memberId }: { memberId: string }) {
             {progress || "Drag and drop your PDF or TXT health report here, or click to browse."}
           </p>
           <p className="text-[10px] text-muted-foreground/80">
-            PDF or TXT up to 8MB. Chunks will be vectorized for instant AI diagnosis context.
+            PDF or TXT up to 10MB. Chunks will be vectorized for instant AI diagnosis context.
           </p>
         </div>
       </div>

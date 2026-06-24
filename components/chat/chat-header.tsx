@@ -1,14 +1,24 @@
 "use client";
 
-import { PanelLeftIcon, HeartPulseIcon, ArrowLeftIcon, UsersIcon } from "lucide-react";
+import { PanelLeftIcon, HeartPulseIcon, ArrowLeftIcon, UsersIcon, FolderHeartIcon } from "lucide-react";
 import Link from "next/link";
-import { memo } from "react";
+import { memo, useState } from "react";
 import useSWR from "swr";
 import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useActiveChat } from "@/hooks/use-active-chat";
 import { fetcher } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { HealthMemories } from "@/components/chat/health-memories";
+import { DocumentUpload } from "@/components/chat/document-upload";
 
 function PureChatHeader({
   chatId,
@@ -21,6 +31,7 @@ function PureChatHeader({
 }) {
   const { state, toggleSidebar, isMobile } = useSidebar();
   const { memberId } = useActiveChat();
+  const [activeTab, setActiveTab] = useState<"summary" | "documents">("summary");
 
   const { data: member } = useSWR(
     memberId ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/member?id=${memberId}` : null,
@@ -76,12 +87,72 @@ function PureChatHeader({
         )}
       </div>
 
+      {/* Health Records slide-out Sheet */}
+      {member && (
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto gap-1 text-xs text-muted-foreground hover:text-foreground h-8"
+            >
+              <FolderHeartIcon className="size-3.5" />
+              <span className="hidden sm:inline">Health Records</span>
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-[90%] sm:max-w-md overflow-y-auto border-l border-border/40">
+            <SheetHeader className="pb-4 border-b border-border/10">
+              <SheetTitle className="text-base font-bold text-foreground">
+                {member.name}&apos;s Health Workspace
+              </SheetTitle>
+              <SheetDescription className="text-xs text-muted-foreground">
+                Track, edit, and manage health information and files.
+              </SheetDescription>
+            </SheetHeader>
+            <div className="py-4 space-y-4 px-4">
+              {/* Tab Selector */}
+              <div className="flex border-b border-border/20">
+                <button
+                  onClick={() => setActiveTab("summary")}
+                  className={`flex-1 text-center pb-2 text-xs font-semibold transition-colors duration-150 ${
+                    activeTab === "summary"
+                      ? "border-b-2 border-primary text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Health Summaries
+                </button>
+                <button
+                  onClick={() => setActiveTab("documents")}
+                  className={`flex-1 text-center pb-2 text-xs font-semibold transition-colors duration-150 ${
+                    activeTab === "documents"
+                      ? "border-b-2 border-primary text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Medical Documents
+                </button>
+              </div>
+
+              {/* Tab Content */}
+              <div className="pt-2">
+                {activeTab === "summary" ? (
+                  <HealthMemories memberId={member.id} />
+                ) : (
+                  <DocumentUpload memberId={member.id} />
+                )}
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
+
       {/* Go to Family Portal Link */}
       <Button
         asChild
         variant="ghost"
         size="sm"
-        className="ml-auto gap-1 text-xs text-muted-foreground hover:text-foreground h-8"
+        className={member ? "gap-1 text-xs text-muted-foreground hover:text-foreground h-8" : "ml-auto gap-1 text-xs text-muted-foreground hover:text-foreground h-8"}
       >
         <Link href="/family">
           <UsersIcon className="size-3.5" />

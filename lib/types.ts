@@ -3,7 +3,9 @@ import { z } from "zod";
 import type { ArtifactKind } from "@/components/chat/artifact";
 import type { createDocument } from "./ai/tools/create-document";
 import type { getWeather } from "./ai/tools/get-weather";
+import type { requestHealthSuggestions } from "./ai/tools/request-health-suggestions";
 import type { requestSuggestions } from "./ai/tools/request-suggestions";
+import type { saveHealthMemory } from "./ai/tools/save-health-memory";
 import type { updateDocument } from "./ai/tools/update-document";
 import type { Suggestion } from "./db/schema";
 
@@ -19,12 +21,26 @@ type updateDocumentTool = InferUITool<ReturnType<typeof updateDocument>>;
 type requestSuggestionsTool = InferUITool<
   ReturnType<typeof requestSuggestions>
 >;
+type saveHealthMemoryTool = InferUITool<ReturnType<typeof saveHealthMemory>>;
+type requestHealthSuggestionsTool = InferUITool<
+  ReturnType<typeof requestHealthSuggestions>
+>;
 
+// ChatTools must enumerate every tool the LLM can call so that:
+//   1. `InferUITool` infers the correct input/output shape for each tool part.
+//   2. `convertToModelMessages` preserves `callProviderMetadata` (e.g. Gemini's
+//      `thoughtSignature`) on the model-side tool-call part.
+//      If a tool is not listed here, the tool part is treated as an unknown shape
+//      and the AI SDK silently drops `callProviderMetadata`, which is exactly what
+//      triggers the "Replayed N functionCall part(s) for a Gemini 3 model without
+//      a thoughtSignature" warning we have been seeing.
 export type ChatTools = {
   getWeather: weatherTool;
   createDocument: createDocumentTool;
   updateDocument: updateDocumentTool;
   requestSuggestions: requestSuggestionsTool;
+  saveHealthMemory: saveHealthMemoryTool;
+  requestHealthSuggestions: requestHealthSuggestionsTool;
 };
 
 export type CustomUIDataTypes = {

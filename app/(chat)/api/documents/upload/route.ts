@@ -1,8 +1,22 @@
+import { put } from "@vercel/blob";
+import {
+  saveDocumentChunks,
+  saveMedicalDocument,
+} from "@/lib/db/queries";
 import { auth } from "@/app/(auth)/auth";
 import { isRegularSession } from "@/lib/auth/guards";
-import { put } from "@vercel/blob";
-import { saveMedicalDocument, saveDocumentChunks } from "@/lib/db/queries";
-import { extractTextFromFile, chunkText, generateEmbeddings } from "@/lib/ai/document-processor";
+import {
+  chunkText,
+  extractTextFromFile,
+  generateEmbeddings,
+} from "@/lib/ai/document-processor";
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const ALLOWED_MIME_TYPES = ["application/pdf", "text/plain"] as const;
+
+function isAllowedFileType(type: string): type is (typeof ALLOWED_MIME_TYPES)[number] {
+  return (ALLOWED_MIME_TYPES as readonly string[]).includes(type);
+}
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -10,52 +24,93 @@ export async function POST(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  let formData: FormData;
   try {
-    const formData = await request.formData();
-    const file = formData.get("file") as File | null;
-    const memberId = formData.get("memberId") as string | null;
+    formData = await request.formData();
+  } catch {
+    return Response.json(
+      { error: "Failed to parse multipart form data" },
+      { status: 400 },
+    );
+  }
 
-    if (!file || !memberId) {
-      return Response.json(
-        { error: "file and memberId are required" },
-        { status: 400 }
-      );
-    }
+  const file = formData.get("file");
+  const memberId = formData.get("memberId");
 
-    // Convert file to buffer
-    const arrayBuffer = await file.arrayBuffer();
+  if (
+    !file ||
+    typeof file !== "object" ||
+    !("size" in file) ||
+    !("type" in file) ||
+    !memberId ||
+    typeof memberId !== "string"
+  ) {
+    return Response.json(
+      { error: "file and memberId are required" },
+      { status: 400 },
+    );
+  }
+
+  const fileType = (file as { type: string }).type;
+  const fileSize = (file as { size: number }).size;
+
+  if (fileSize <= 0) {
+    return Response.json({ error: "Uploaded file is empty" }, { status: 400 });
+  }
+
+  if (fileSize > MAX_FILE_SIZE) {
+    return Response.json(
+      { error: `File exceeds the ${MAX_FILE_SIZE / (1024 * 1024)}MB limit` },
+      { status: 400 },
+    );
+  }
+
+  if (!isAllowedFileType(fileType)) {
+    return Response.json(
+      { error: "Only PDF and TXT medical documents are supported" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    // Convert file to buffer once and reuse it for parsing + blob upload.
+    const arrayBuffer = await (file as File).arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // 1. Extract text and chunk it
-    const text = await extractTextFromFile(buffer, file.type);
+    // 1. Extract text and chunk it. We surface a clean error if the PDF is
+    //    password-protected / corrupt so the client can show something useful.
+    const text = await extractTextFromFile(buffer, fileType);
     const chunks = chunkText(text);
 
     if (chunks.length === 0) {
       return Response.json(
         { error: "No extractable text found in this document" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // 2. Generate vector embeddings for the chunks
+    // 2. Generate vector embeddings for the chunks.
     const embeddings = await generateEmbeddings(chunks);
 
-    // 3. Upload file to Vercel Blob
-    // We sanitize the filename and suffix with a timestamp to prevent collisions
-    const sanitizedName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+    // 3. Upload file to Vercel Blob. Sanitize the filename and prefix a
+    //    timestamp to prevent collisions and to avoid Vercel Blob rejecting
+    //    weird characters.
+    const originalName =
+      (file as File).name?.replace(/[^a-zA-Z0-9.-]/g, "_") || "document";
+    const sanitizedName = `${Date.now()}-${originalName}`;
     const blob = await put(sanitizedName, buffer, {
       access: "public",
     });
 
-    // 4. Save file metadata to DB
+    // 4. Save file metadata to DB.
     const dbDoc = await saveMedicalDocument({
       memberId,
-      fileName: file.name,
+      fileName: (file as File).name || sanitizedName,
       url: blob.url,
-      fileType: file.type,
+      fileType,
     });
 
-    // 5. Save chunk vectors to DB
+    // 5. Save chunk vectors to DB.
     const dbChunks = chunks.map((content, idx) => ({
       documentId: dbDoc.id,
       content,
@@ -68,11 +123,10 @@ export async function POST(request: Request) {
       document: dbDoc,
       chunksCount: chunks.length,
     });
-  } catch (err: any) {
+  } catch (err) {
+    const errorMessage =
+      err instanceof Error ? err.message : "Failed to process document";
     console.error("Document upload & processing error:", err);
-    return Response.json(
-      { error: err.message || "Failed to process document" },
-      { status: 500 }
-    );
+    return Response.json({ error: errorMessage }, { status: 500 });
   }
 }

@@ -218,18 +218,24 @@ export async function POST(request: Request) {
     const stream = createUIMessageStream({
       originalMessages: isToolApprovalFlow ? uiMessages : undefined,
       execute: async ({ writer: dataStream }) => {
-        const activeTools: (
+        const baseActiveTools: (
           | "saveHealthMemory"
           | "requestHealthSuggestions"
           | "googleSearch"
           | "urlContext"
-        )[] = ["saveHealthMemory", "requestHealthSuggestions"];
+        )[] = [];
 
+        // Only enable health tools when there is an active family member.
+        // Without a memberId, the tool would no-op or fail; we don't want
+        // the LLM to call it and then "lie" about the result.
+        if (activeMemberId) {
+          baseActiveTools.push("saveHealthMemory", "requestHealthSuggestions");
+        }
         if (webSearchEnabled) {
-          activeTools.push("googleSearch");
+          baseActiveTools.push("googleSearch");
         }
         if (urlContextEnabled) {
-          activeTools.push("urlContext");
+          baseActiveTools.push("urlContext");
         }
 
         const result = streamText({
@@ -242,16 +248,24 @@ export async function POST(request: Request) {
           }),
           messages: modelMessages,
           stopWhen: stepCountIs(5),
-          experimental_activeTools: activeTools,
+          activeTools: baseActiveTools,
           tools: {
-            saveHealthMemory: activeMemberId
-              ? saveHealthMemory({ memberId: activeMemberId })
-              : saveHealthMemory({ memberId: "" }), // Fallback: tool won't work without member
-            requestHealthSuggestions: activeMemberId
-              ? requestHealthSuggestions({ memberId: activeMemberId })
-              : requestHealthSuggestions({ memberId: "" }),
-            googleSearch: google.tools.googleSearch({}) as any,
-            urlContext: google.tools.urlContext({}) as any,
+            ...(activeMemberId
+              ? {
+                  saveHealthMemory: saveHealthMemory({
+                    memberId: activeMemberId,
+                  }),
+                  requestHealthSuggestions: requestHealthSuggestions({
+                    memberId: activeMemberId,
+                  }),
+                }
+              : {}),
+            ...(webSearchEnabled
+              ? { googleSearch: google.tools.googleSearch({}) as any }
+              : {}),
+            ...(urlContextEnabled
+              ? { urlContext: google.tools.urlContext({}) as any }
+              : {}),
           },
           providerOptions: {
             google: {
