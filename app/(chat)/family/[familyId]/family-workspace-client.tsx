@@ -30,7 +30,7 @@ import {
   UserCheck2Icon,
   Trash2Icon,
 } from "lucide-react";
-import { deleteFamilyAction } from "@/app/(chat)/family/actions";
+import { deleteFamilyAction, deleteFamilyMemberAction } from "@/app/(chat)/family/actions";
 import type { Family, FamilyMember } from "@/lib/db/schema";
 import { getDicebearAvatarUrl } from "@/lib/utils/avatar";
 
@@ -46,7 +46,9 @@ export function FamilyWorkspaceClient({
   );
   const [activeTab, setActiveTab] = useState<"summary" | "documents">("summary");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showDeleteMemberDialog, setShowDeleteMemberDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeletingMember, setIsDeletingMember] = useState(false);
   const router = useRouter();
 
   const selectedMember = initialMembers.find((m) => m.id === selectedMemberId);
@@ -133,7 +135,7 @@ export function FamilyWorkspaceClient({
                         onClick={() => setSelectedMemberId(member.id)}
                         className={`group relative flex items-center justify-between p-4 rounded-xl border transition-all duration-200 cursor-pointer ${
                           isSelected
-                            ? "border-primary bg-primary/5 shadow-sm"
+                            ? "border-primary bg-primary/5"
                             : "border-border/40 bg-card/20 hover:bg-card/40"
                         }`}
                       >
@@ -220,12 +222,23 @@ export function FamilyWorkspaceClient({
                     </div>
                   </div>
 
-                  <Button asChild size="sm" className="gap-1.5 self-start sm:self-auto bg-primary text-primary-foreground hover:bg-primary/95 shadow-sm">
-                    <Link href={`/?memberId=${selectedMember.id}`}>
-                      <MessageSquarePlusIcon className="size-4" />
-                      Start Chat
-                    </Link>
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowDeleteMemberDialog(true)}
+                      className="gap-1.5 text-muted-foreground hover:text-destructive hover:border-destructive/40 hover:bg-destructive/5 transition-colors border-border/60 shadow-none"
+                    >
+                      <Trash2Icon className="size-3.5" />
+                      Delete Profile
+                    </Button>
+                    <Button asChild size="sm" className="gap-1.5 bg-zinc-900 text-zinc-50 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200 border-0 shadow-none font-semibold transition-all">
+                      <Link href={`/?memberId=${selectedMember.id}`}>
+                        <MessageSquarePlusIcon className="size-4" />
+                        Start Chat
+                      </Link>
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Tabs Selector */}
@@ -314,6 +327,43 @@ export function FamilyWorkspaceClient({
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isDeleting ? "Deleting\u2026" : "Delete Workspace"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showDeleteMemberDialog} onOpenChange={setShowDeleteMemberDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete &ldquo;{selectedMember?.name}&rdquo;?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this family member, their health summaries, and all medical records. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingMember}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!selectedMember) return;
+                setIsDeletingMember(true);
+                try {
+                  await deleteFamilyMemberAction(selectedMember.id);
+                  toast.success(`"${selectedMember.name}" profile deleted`);
+                  setSelectedMemberId(
+                    initialMembers.find((m) => m.id !== selectedMember.id)?.id ?? null
+                  );
+                  router.refresh();
+                } catch (err: any) {
+                  toast.error(err.message || "Failed to delete profile");
+                } finally {
+                  setIsDeletingMember(false);
+                  setShowDeleteMemberDialog(false);
+                }
+              }}
+              disabled={isDeletingMember}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeletingMember ? "Deleting\u2026" : "Delete Profile"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -772,6 +772,35 @@ export async function getFamilyMemberById({ id }: { id: string }) {
   }
 }
 
+export async function deleteFamilyMemberById({ id }: { id: string }) {
+  try {
+    // 1. Fetch all chat IDs associated with this family member
+    const memberChats = await db
+      .select({ id: chat.id })
+      .from(chat)
+      .where(eq(chat.memberId, id));
+
+    const chatIds = memberChats.map((c) => c.id);
+
+    if (chatIds.length > 0) {
+      // 2. Delete related records for these chats
+      await db.delete(vote).where(inArray(vote.chatId, chatIds));
+      await db.delete(message).where(inArray(message.chatId, chatIds));
+      await db.delete(stream).where(inArray(stream.chatId, chatIds));
+      // 3. Delete the chats
+      await db.delete(chat).where(inArray(chat.id, chatIds));
+    }
+
+    // 4. Delete the family member (this will cascade delete health memories)
+    await db.delete(familyMember).where(eq(familyMember.id, id));
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to delete family member"
+    );
+  }
+}
+
 // ============================================================
 // Health Memory Queries
 // ============================================================
