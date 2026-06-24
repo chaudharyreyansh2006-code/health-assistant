@@ -48,6 +48,7 @@ type ActiveChatContextValue = {
   showCreditCardAlert: boolean;
   setShowCreditCardAlert: Dispatch<SetStateAction<boolean>>;
   memberId: string | null;
+  chatMemberId: string | null;
   webSearchEnabled: boolean;
   setWebSearchEnabled: Dispatch<SetStateAction<boolean>>;
   urlContextEnabled: boolean;
@@ -120,13 +121,24 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (memberIdFromUrl) {
+      // URL is the strongest signal (e.g. /?memberId=...)
       setMemberId(memberIdFromUrl);
     } else if (chatData?.memberId) {
+      // Chat is already loaded and bound to a member — adopt that
       setMemberId(chatData.memberId);
-    } else {
-      setMemberId(null);
     }
+    // IMPORTANT: do NOT clear memberId to null here. The URL drops the
+    // `?memberId=` search param as soon as the user starts chatting and
+    // the chat data hasn't necessarily loaded yet, so clearing would make
+    // the Health Records button flash off in the middle of a session.
+    // memberId is only changed by an explicit URL param or a loaded chat.
   }, [chatData, memberIdFromUrl]);
+
+  // `chatMemberId` is the memberId bound to the currently-loaded chat. It
+  // exists independently of the local `memberId` state so consumers (e.g.
+  // ChatHeader's Health Records Sheet) can still resolve a member even
+  // when the URL no longer carries `?memberId=`.
+  const chatMemberId = chatData?.memberId ?? null;
 
 
   const initialMessages: ChatMessage[] = isNewChat
@@ -307,6 +319,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       showCreditCardAlert,
       setShowCreditCardAlert,
       memberId,
+      chatMemberId,
       webSearchEnabled,
       setWebSearchEnabled,
       urlContextEnabled,
@@ -330,6 +343,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       currentModelId,
       showCreditCardAlert,
       memberId,
+      chatMemberId,
       webSearchEnabled,
       urlContextEnabled,
     ]

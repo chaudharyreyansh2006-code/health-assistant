@@ -30,11 +30,20 @@ function PureChatHeader({
   isReadonly: boolean;
 }) {
   const { state, toggleSidebar, isMobile } = useSidebar();
-  const { memberId } = useActiveChat();
+  const { memberId, chatMemberId } = useActiveChat();
   const [activeTab, setActiveTab] = useState<"summary" | "documents">("summary");
 
+  // Use whichever memberId we can resolve: the live `memberId` (from URL
+  // search param) takes priority, but on chat routes that no longer carry
+  // `?memberId=...` we fall back to the memberId bound to the loaded chat
+  // record. Without this fallback the Health Records button would flash
+  // off the moment the user starts a conversation.
+  const effectiveMemberId = memberId ?? chatMemberId;
+
   const { data: member } = useSWR(
-    memberId ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/member?id=${memberId}` : null,
+    effectiveMemberId
+      ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/member?id=${effectiveMemberId}`
+      : null,
     fetcher
   );
 
