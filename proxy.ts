@@ -16,7 +16,6 @@ export async function proxy(request: NextRequest) {
   const token = await getToken({
     req: request,
     secret: process.env.AUTH_SECRET,
-    secureCookie: !isDevelopmentEnvironment,
   });
 
   const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -26,10 +25,20 @@ export async function proxy(request: NextRequest) {
   if (!token || isGuest) {
     if (["/", "/login", "/register"].includes(pathname)) {
       if (pathname === "/login") {
-        return NextResponse.redirect(new URL(`${base}/?showLogin=true`, request.url));
+        const url = new URL(`${base}/`, request.url);
+        url.searchParams.set("showLogin", "true");
+        request.nextUrl.searchParams.forEach((value, key) => {
+          if (key !== "showLogin") url.searchParams.set(key, value);
+        });
+        return NextResponse.redirect(url);
       }
       if (pathname === "/register") {
-        return NextResponse.redirect(new URL(`${base}/?showRegister=true`, request.url));
+        const url = new URL(`${base}/`, request.url);
+        url.searchParams.set("showRegister", "true");
+        request.nextUrl.searchParams.forEach((value, key) => {
+          if (key !== "showRegister") url.searchParams.set(key, value);
+        });
+        return NextResponse.redirect(url);
       }
       return NextResponse.next();
     }
@@ -38,7 +47,7 @@ export async function proxy(request: NextRequest) {
       return new Response("Unauthorized", { status: 401 });
     }
 
-    const redirectUrl = encodeURIComponent(new URL(request.url).pathname);
+    const redirectUrl = encodeURIComponent(request.nextUrl.pathname + request.nextUrl.search);
     return NextResponse.redirect(
       new URL(`${base}/?showLogin=true&callbackUrl=${redirectUrl}`, request.url)
     );

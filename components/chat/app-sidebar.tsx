@@ -23,6 +23,7 @@ import {
   SidebarHistory,
 } from "@/components/chat/sidebar-history";
 import { SidebarUserNav } from "@/components/chat/sidebar-user-nav";
+import { Button } from "@/components/ui/button";
 import { useActiveChat } from "@/hooks/use-active-chat";
 import {
   Sidebar,
@@ -217,14 +218,14 @@ export function AppSidebar({ user }: { user: User | undefined }) {
           {user ? (
             <SidebarUserNav user={user} />
           ) : (
-            <SidebarMenu>
+            <SidebarMenu className="px-2">
               <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="w-full justify-center bg-primary text-white hover:bg-primary/90 transition-all rounded-lg text-xs font-bold py-1.5 shadow-sm hover:text-primary-foreground"
+                <Button
+                  className="w-full justify-center text-xs font-bold h-8 rounded-lg"
                   onClick={() => setIsLoginOpen(true)}
                 >
                   Sign In
-                </SidebarMenuButton>
+                </Button>
               </SidebarMenuItem>
             </SidebarMenu>
           )}

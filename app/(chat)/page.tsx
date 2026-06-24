@@ -8,6 +8,7 @@ import {
   getFamilyMembers,
 } from "@/lib/db/queries";
 import { AddMemberDialog } from "./add-member-dialog";
+import { CreateSelfProfileForm } from "./create-self-profile-form";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,13 +61,6 @@ export default async function Page({ searchParams }: Props) {
       createdBy: session.user.id,
     });
 
-    // Auto-create their own profile
-    await addFamilyMember({
-      familyId: activeFamily.id,
-      name: session.user.name || "Self",
-      relationship: "self",
-    });
-
     // Re-fetch family list
     families = [activeFamily];
   } else {
@@ -75,6 +69,28 @@ export default async function Page({ searchParams }: Props) {
 
   // 2. Fetch all members in this workspace
   const members = await getFamilyMembers({ familyId: activeFamily.id });
+
+  if (members.length === 0) {
+    return (
+      <div className="flex-1 overflow-y-auto bg-background p-6 md:p-10 flex flex-col items-center justify-center min-h-dvh">
+        <div className="w-full max-w-md space-y-8">
+          <div className="space-y-3 text-center">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-xs font-semibold text-primary">
+              <HeartPulseIcon className="size-4 animate-pulse" />
+              Clinical AI Onboarding
+            </div>
+            <h1 className="text-3xl font-extrabold tracking-tight text-foreground bg-gradient-to-r from-primary via-indigo-500 to-teal-500 bg-clip-text text-transparent">
+              Configure your profile
+            </h1>
+            <p className="text-muted-foreground text-xs max-w-sm mx-auto">
+              Set up your personal health profile to begin clinical check-ins, record storage, and clinical memory tracking.
+            </p>
+          </div>
+          <CreateSelfProfileForm familyId={activeFamily.id} defaultName={session.user.name || ""} />
+        </div>
+      </div>
+    );
+  }
 
   const getRelationshipBadgeColor = (rel: string) => {
     switch (rel.toLowerCase()) {

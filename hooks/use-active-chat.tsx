@@ -27,6 +27,8 @@ import type { Vote } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
 import type { ChatMessage } from "@/lib/types";
 import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
+import { useSession } from "next-auth/react";
+import { guestRegex } from "@/lib/constants";
 
 type ActiveChatContextValue = {
   chatId: string;
@@ -117,6 +119,10 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     { revalidateOnFocus: false }
   );
 
+  const { data: session, status: authStatus } = useSession();
+  const isGuest = session?.user?.email ? guestRegex.test(session.user.email) : false;
+  const isAuthenticated = authStatus === "authenticated" && !isGuest;
+
   const searchParams = useSearchParams();
   const memberIdFromUrl = searchParams.get("memberId");
   const showLogin = searchParams.get("showLogin");
@@ -133,10 +139,12 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   }, [chatData, memberIdFromUrl]);
 
   useEffect(() => {
-    if (showLogin === "true" || showRegister === "true") {
+    if (!isAuthenticated && (showLogin === "true" || showRegister === "true")) {
       setIsLoginOpen(true);
+    } else if (isAuthenticated) {
+      setIsLoginOpen(false);
     }
-  }, [showLogin, showRegister]);
+  }, [showLogin, showRegister, isAuthenticated]);
 
   const initialMessages: ChatMessage[] = isNewChat
     ? []
