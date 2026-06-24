@@ -687,6 +687,25 @@ export async function getFamilyById({ id }: { id: string }) {
   }
 }
 
+export async function deleteFamilyById({
+  id,
+  userId,
+}: {
+  id: string;
+  userId: string;
+}) {
+  try {
+    await db
+      .delete(family)
+      .where(and(eq(family.id, id), eq(family.createdBy, userId)));
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to delete family"
+    );
+  }
+}
+
 // ============================================================
 // Family Member Queries
 // ============================================================

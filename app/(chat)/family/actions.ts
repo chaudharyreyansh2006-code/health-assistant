@@ -2,8 +2,9 @@
 
 import { auth } from "@/app/(auth)/auth";
 import { isRegularSession } from "@/lib/auth/guards";
-import { createFamily, addFamilyMember } from "@/lib/db/queries";
+import { createFamily, addFamilyMember, deleteFamilyById } from "@/lib/db/queries";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 export async function createFamilyAction(name: string) {
   const session = await auth();
@@ -58,4 +59,14 @@ export async function addFamilyMemberAction({
 
   revalidatePath(`/family/${familyId}`);
   return result;
+}
+
+export async function deleteFamilyAction(familyId: string) {
+  const session = await auth();
+  if (!isRegularSession(session)) {
+    throw new Error("Unauthorized");
+  }
+
+  await deleteFamilyById({ id: familyId, userId: session.user.id });
+  revalidatePath("/family");
 }

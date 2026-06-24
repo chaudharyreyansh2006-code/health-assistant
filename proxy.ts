@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
-import { getSafeCallbackUrl, isRegularToken } from "./lib/auth/guards";
+import { getSafeCallbackUrl } from "./lib/auth/callback";
+import { isRegularToken } from "./lib/auth/guards";
 import { isDevelopmentEnvironment } from "./lib/constants";
 
 const PUBLIC_PATHS = new Set(["/login", "/register"]);

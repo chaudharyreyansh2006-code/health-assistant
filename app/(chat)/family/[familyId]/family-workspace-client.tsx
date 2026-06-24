@@ -2,11 +2,23 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { AddMemberForm } from "./add-member-form";
 import { HealthMemories } from "@/components/chat/health-memories";
 import { DocumentUpload } from "@/components/chat/document-upload";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   UserIcon,
   MessageSquarePlusIcon,
@@ -16,7 +28,9 @@ import {
   HeartIcon,
   CalendarIcon,
   UserCheck2Icon,
+  Trash2Icon,
 } from "lucide-react";
+import { deleteFamilyAction } from "@/app/(chat)/family/actions";
 import type { Family, FamilyMember } from "@/lib/db/schema";
 
 export function FamilyWorkspaceClient({
@@ -30,6 +44,9 @@ export function FamilyWorkspaceClient({
     initialMembers.length > 0 ? initialMembers[0].id : null
   );
   const [activeTab, setActiveTab] = useState<"summary" | "documents">("summary");
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const router = useRouter();
 
   const selectedMember = initialMembers.find((m) => m.id === selectedMemberId);
 
@@ -57,6 +74,7 @@ export function FamilyWorkspaceClient({
   };
 
   return (
+    <>
     <div className="flex-1 overflow-y-auto bg-background p-6 md:p-10">
       <div className="max-w-6xl mx-auto space-y-6">
         
@@ -79,6 +97,15 @@ export function FamilyWorkspaceClient({
               Manage profiles and clinical context files for each group member.
             </p>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 self-start text-muted-foreground hover:text-destructive hover:border-destructive/40 hover:bg-destructive/5 transition-colors"
+            onClick={() => setShowDeleteDialog(true)}
+          >
+            <Trash2Icon className="size-3.5" />
+            Delete Workspace
+          </Button>
         </div>
 
         {/* Main Grid */}
@@ -249,5 +276,41 @@ export function FamilyWorkspaceClient({
 
       </div>
     </div>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete &ldquo;{family.name}&rdquo;?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this family workspace, all its
+              members, health summaries, and medical documents. This action
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                setIsDeleting(true);
+                try {
+                  await deleteFamilyAction(family.id);
+                  toast.success(`"${family.name}" workspace deleted`);
+                  router.replace("/family");
+                } catch {
+                  toast.error("Failed to delete workspace");
+                } finally {
+                  setIsDeleting(false);
+                  setShowDeleteDialog(false);
+                }
+              }}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? "Deleting\u2026" : "Delete Workspace"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

@@ -4,11 +4,13 @@ import {
   MessageSquareIcon,
   PanelLeftIcon,
   PenSquareIcon,
+  Trash2Icon,
   TrashIcon,
   UsersIcon,
   HeartIcon,
   UserIcon,
 } from "lucide-react";
+import { deleteFamilyAction } from "@/app/(chat)/family/actions";
 import useSWR from "swr";
 import { fetcher } from "@/lib/utils";
 import Link from "next/link";
@@ -55,6 +57,8 @@ export function AppSidebar({ user }: { user: User | undefined }) {
   const { setOpenMobile, toggleSidebar } = useSidebar();
   const { mutate } = useSWRConfig();
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
+  const [deletingFamilyId, setDeletingFamilyId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const { data: families } = useSWR<any[]>(
     user ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/families` : null,
@@ -73,6 +77,22 @@ export function AppSidebar({ user }: { user: User | undefined }) {
     });
 
     toast.success("All chats deleted");
+  };
+
+  const handleDeleteFamily = async () => {
+    if (!deletingFamilyId) return;
+    setIsDeleting(true);
+    try {
+      await deleteFamilyAction(deletingFamilyId);
+      mutate(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/families`);
+      toast.success("Workspace deleted");
+      router.replace("/family");
+    } catch {
+      toast.error("Failed to delete workspace");
+    } finally {
+      setIsDeleting(false);
+      setDeletingFamilyId(null);
+    }
   };
 
   return (
@@ -162,14 +182,27 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                 <SidebarMenu className="gap-2">
                   {families && families.map((fam) => (
                     <div key={fam.id} className="space-y-1 px-1">
-                      <Link
-                        href={`/family/${fam.id}`}
-                        onClick={() => setOpenMobile(false)}
-                        className="flex items-center gap-2 px-2 py-1 text-xs font-semibold text-foreground/80 hover:text-primary hover:bg-sidebar-accent/50 rounded-md transition-colors"
-                      >
-                        <UsersIcon className="size-3.5 text-primary/70" />
-                        <span className="truncate">{fam.name}</span>
-                      </Link>
+                      <div className="group/fam flex items-center justify-between rounded-md hover:bg-sidebar-accent/50 transition-colors">
+                        <Link
+                          href={`/family/${fam.id}`}
+                          onClick={() => setOpenMobile(false)}
+                          className="flex items-center gap-2 px-2 py-1 text-xs font-semibold text-foreground/80 hover:text-primary transition-colors flex-1 min-w-0"
+                        >
+                          <UsersIcon className="size-3.5 text-primary/70 shrink-0" />
+                          <span className="truncate">{fam.name}</span>
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeletingFamilyId(fam.id);
+                          }}
+                          className="size-6 flex items-center justify-center rounded-md opacity-0 group-hover/fam:opacity-100 focus:opacity-100 text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-all duration-150 shrink-0 mr-1"
+                          title="Delete workspace"
+                        >
+                          <Trash2Icon className="size-3" />
+                        </button>
+                      </div>
                       <div className="pl-4 space-y-0.5 border-l border-sidebar-border ml-3">
                         {fam.members && fam.members.map((mem: any) => (
                           <Link
@@ -233,6 +266,34 @@ export function AppSidebar({ user }: { user: User | undefined }) {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteAll}>
               Delete All
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) setDeletingFamilyId(null);
+        }}
+        open={!!deletingFamilyId}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this workspace?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this family workspace, all its
+              members, health summaries, and medical documents. This action
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteFamily}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? "Deleting…" : "Delete Workspace"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

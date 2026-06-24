@@ -5,6 +5,7 @@ import { getFamiliesByUserId } from "@/lib/db/queries";
 import { CreateFamilyForm } from "./create-family-form";
 import Link from "next/link";
 import { UsersIcon, ChevronRightIcon, HeartPulseIcon } from "lucide-react";
+import { DeleteFamilyButton } from "./delete-family-button";
 
 export const metadata = {
   title: "Family Dashboard | Health Assistant",
@@ -68,6 +69,7 @@ export default async function FamilyPage() {
                   href={`/family/${f.id}`}
                   className="group relative flex items-center justify-between p-5 rounded-2xl border border-border/50 bg-card/35 hover:bg-card/75 transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:hover:shadow-[0_8px_30px_rgb(0,0,0,0.2)]"
                 >
+                  <DeleteFamilyButton familyId={f.id} familyName={f.name} />
                   <div className="flex items-center gap-4">
                     <div className="p-3 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors duration-300">
                       <UsersIcon className="size-5" />
