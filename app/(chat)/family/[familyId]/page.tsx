@@ -5,7 +5,7 @@ import { getFamilyById, getFamilyMembers } from "@/lib/db/queries";
 import { FamilyWorkspaceClient } from "./family-workspace-client";
 
 export const metadata = {
-  title: "Family Workspace | Health Assistant",
+  title: "Workspace | Sana Health",
   description: "Manage clinical context and documents for family members.",
 };
 

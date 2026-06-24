@@ -20,6 +20,7 @@ import { MessageActions } from "./message-actions";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
 import { Weather } from "./weather";
+import { HeartPulseIcon } from "lucide-react";
 
 const PurePreviewMessage = ({
   addToolApprovalResponse,
@@ -345,8 +346,8 @@ const PurePreviewMessage = ({
       >
         {isAssistant && (
           <div className="flex h-[calc(13px*1.65)] shrink-0 items-center">
-            <div className="flex size-7 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground ring-1 ring-border/50">
-              <SparklesIcon size={13} />
+            <div className="flex size-7 items-center justify-center rounded-full bg-gradient-to-br from-primary to-teal-500 text-primary-foreground shadow-sm">
+              <HeartPulseIcon size={12} />
             </div>
           </div>
         )}
@@ -371,8 +372,8 @@ export const ThinkingMessage = () => {
     >
       <div className="flex items-start gap-3">
         <div className="flex h-[calc(13px*1.65)] shrink-0 items-center">
-          <div className="flex size-7 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground ring-1 ring-border/50">
-            <SparklesIcon size={13} />
+          <div className="flex size-7 items-center justify-center rounded-full bg-gradient-to-br from-primary to-teal-500 text-primary-foreground shadow-sm">
+            <HeartPulseIcon size={12} />
           </div>
         </div>
 

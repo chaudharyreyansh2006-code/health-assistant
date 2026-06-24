@@ -63,7 +63,7 @@ function PureChatHeader({
         {member ? (
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold text-foreground">
-              Health Chat: {member.name}
+              Sana: {member.name}
             </span>
             <Badge variant="outline" className={`text-[9px] px-1.5 py-0 border ${getRelationshipBadgeColor(member.relationship)}`}>
               {member.relationship}
@@ -71,7 +71,7 @@ function PureChatHeader({
           </div>
         ) : (
           <span className="text-xs font-semibold text-foreground">
-            General Health Consultation
+            Sana Consultation
           </span>
         )}
       </div>

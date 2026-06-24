@@ -8,7 +8,7 @@ import {
   getFamilyMembers,
 } from "@/lib/db/queries";
 import { AddMemberDialog } from "./add-member-dialog";
-import { CreateSelfProfileForm } from "./create-self-profile-form";
+import { getDicebearAvatarUrl } from "@/lib/utils/avatar";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,7 @@ type Props = {
 };
 
 export const metadata = {
-  title: "Health Portal | Family Health Assistant",
+  title: "Portal | Sana Health",
   description: "Select a family member profile to begin your clinical check-in.",
 };
 
@@ -69,27 +69,7 @@ export default async function Page({ searchParams }: Props) {
   // 2. Fetch all members in this workspace
   const members = await getFamilyMembers({ familyId: activeFamily.id });
 
-  if (members.length === 0) {
-    return (
-      <div className="flex-1 overflow-y-auto bg-background p-6 md:p-10 flex flex-col items-center justify-center min-h-dvh">
-        <div className="w-full max-w-md space-y-8">
-          <div className="space-y-3 text-center">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-xs font-semibold text-primary">
-              <HeartPulseIcon className="size-4 animate-pulse" />
-              Clinical AI Onboarding
-            </div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-foreground bg-gradient-to-r from-primary via-indigo-500 to-teal-500 bg-clip-text text-transparent">
-              Configure your profile
-            </h1>
-            <p className="text-muted-foreground text-xs max-w-sm mx-auto">
-              Set up your personal health profile to begin clinical check-ins, record storage, and clinical memory tracking.
-            </p>
-          </div>
-          <CreateSelfProfileForm familyId={activeFamily.id} defaultName={session.user.name || ""} />
-        </div>
-      </div>
-    );
-  }
+  // No members check redirection removed to allow pure empty state (dashboard portal with only Add Profile card)
 
   const getRelationshipBadgeColor = (rel: string) => {
     switch (rel.toLowerCase()) {
@@ -131,7 +111,7 @@ export default async function Page({ searchParams }: Props) {
         <div className="space-y-3">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-xs font-semibold text-primary">
             <HeartPulseIcon className="size-4 animate-pulse" />
-            Clinical AI Portal
+            Sana AI Portal
           </div>
           <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-foreground bg-gradient-to-r from-primary via-indigo-500 to-teal-500 bg-clip-text text-transparent">
             Who is having a health check-in today?
@@ -157,9 +137,11 @@ export default async function Page({ searchParams }: Props) {
                   href={`/?memberId=${member.id}`}
                   className="relative flex items-center justify-center w-36 h-36 rounded-3xl border border-border/40 bg-card/25 hover:bg-card/45 hover:border-primary/50 shadow-md hover:shadow-xl transition-all duration-300 hover:scale-[1.05] overflow-hidden"
                 >
-                  <span className="text-3xl font-extrabold tracking-wider text-muted-foreground group-hover:text-primary transition-colors duration-250 select-none">
-                    {initials}
-                  </span>
+                  <img
+                    src={getDicebearAvatarUrl(member.name, member.gender)}
+                    alt={member.name}
+                    className="w-full h-full object-cover p-2.5 transition-transform duration-300 group-hover:scale-105"
+                  />
                   
                   {/* Subtle hover gradient */}
                   <div className="absolute inset-0 bg-gradient-to-b from-transparent to-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />

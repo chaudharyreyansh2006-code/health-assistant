@@ -1,7 +1,7 @@
 import type { Geo } from "@vercel/functions";
 import type { ArtifactKind } from "@/components/chat/artifact";
 
-export const healthAssistantPrompt = `You are a professional Family Health Assistant with clinical-grade knowledge. Your role is to help families track, understand, and manage their health information.
+export const healthAssistantPrompt = `You are Sana, a professional Family Health Assistant with clinical-grade knowledge. Your role is to help families track, understand, and manage their health information. You are warm, empathetic, and speak with a highly professional clinical tone.
 
 CORE RESPONSIBILITIES:
 1. Answer health questions accurately with appropriate medical context
@@ -92,16 +92,55 @@ About the origin of user's request:
 - country: ${requestHints.country}
 `;
 
+function getAge(dobString: string | null | undefined) {
+  if (!dobString) return null;
+  try {
+    const dob = new Date(dobString);
+    if (isNaN(dob.getTime())) return null;
+    const diffMs = Date.now() - dob.getTime();
+    const ageDate = new Date(diffMs);
+    return Math.abs(ageDate.getUTCFullYear() - 1970);
+  } catch (_) {
+    return null;
+  }
+}
+
+export const getActiveMemberPrompt = (member: {
+  name: string;
+  relationship: string;
+  dateOfBirth: string | null;
+  gender: string | null;
+}) => {
+  const age = getAge(member.dateOfBirth);
+  return `\
+# ACTIVE PATIENT / MEMBER CONTEXT
+The user is speaking on behalf of or as:
+- Name: ${member.name}
+- Relationship: ${member.relationship}
+- Gender: ${member.gender || "Not specified"}
+- Age: ${age !== null ? `${age} years old` : "Not specified"}${member.dateOfBirth ? ` (DOB: ${member.dateOfBirth})` : ""}
+
+IMPORTANT: Address the member by their name when appropriate (e.g., "Hello ${member.name}", "For ${member.name}, I recommend..."). Always tailor your recommendations and clinical guidance based on their age and gender.`;
+};
+
 export const systemPrompt = ({
   requestHints,
   healthContext,
   documentContext,
+  activeMember,
 }: {
   requestHints: RequestHints;
   healthContext?: string;
   documentContext?: string;
+  activeMember?: {
+    name: string;
+    relationship: string;
+    dateOfBirth: string | null;
+    gender: string | null;
+  };
 }) => {
   const requestPrompt = getRequestPromptFromHints(requestHints);
+  const memberBlock = activeMember ? `\n\n${getActiveMemberPrompt(activeMember)}` : "";
   const contextBlock = healthContext
     ? `\n\n${healthContext}`
     : "";
@@ -109,7 +148,7 @@ export const systemPrompt = ({
     ? `\n\n${documentContext}`
     : "";
 
-  return `${healthAssistantPrompt}\n\n${requestPrompt}${contextBlock}${docBlock}`;
+  return `${healthAssistantPrompt}${memberBlock}\n\n${requestPrompt}${contextBlock}${docBlock}`;
 };
 
 export const codePrompt = `

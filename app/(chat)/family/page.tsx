@@ -8,7 +8,7 @@ import { UsersIcon, ChevronRightIcon, HeartPulseIcon } from "lucide-react";
 import { DeleteFamilyButton } from "./delete-family-button";
 
 export const metadata = {
-  title: "Family Dashboard | Health Assistant",
+  title: "Workspaces | Sana Health",
   description: "Manage your family health workspaces and members.",
 };
 
@@ -30,7 +30,7 @@ export default async function FamilyPage() {
             <div className="flex items-center gap-2 text-primary">
               <HeartPulseIcon className="size-6 animate-pulse" />
               <h1 className="text-3xl font-extrabold tracking-tight text-foreground bg-gradient-to-r from-primary to-teal-500 bg-clip-text text-transparent">
-                Family Health Portal
+                Sana Family Portal
               </h1>
             </div>
             <p className="text-muted-foreground text-sm">

@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { deleteFamilyAction } from "@/app/(chat)/family/actions";
 import type { Family, FamilyMember } from "@/lib/db/schema";
+import { getDicebearAvatarUrl } from "@/lib/utils/avatar";
 
 export function FamilyWorkspaceClient({
   family,
@@ -137,10 +138,12 @@ export function FamilyWorkspaceClient({
                         }`}
                       >
                         <div className="flex items-center gap-3 min-w-0">
-                          <div className={`p-2.5 rounded-lg ${
-                            isSelected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                          } transition-colors duration-200`}>
-                            <UserIcon className="size-4" />
+                          <div className="size-9 rounded-xl overflow-hidden bg-muted/40 border border-border/30 flex-shrink-0 flex items-center justify-center">
+                            <img
+                              src={getDicebearAvatarUrl(member.name, member.gender)}
+                              alt={member.name}
+                              className="size-full object-cover"
+                            />
                           </div>
                           <div className="min-w-0">
                             <p className="text-xs font-semibold text-foreground truncate">
@@ -189,8 +192,12 @@ export function FamilyWorkspaceClient({
                 {/* Member Brief */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border/30 pb-4">
                   <div className="flex items-center gap-3.5">
-                    <div className="p-3 bg-primary/10 text-primary rounded-xl">
-                      <UserCheck2Icon className="size-5" />
+                    <div className="size-11 rounded-xl overflow-hidden bg-muted border border-border/30 flex items-center justify-center shrink-0">
+                      <img
+                        src={getDicebearAvatarUrl(selectedMember.name, selectedMember.gender)}
+                        alt={selectedMember.name}
+                        className="size-full object-cover"
+                      />
                     </div>
                     <div>
                       <h2 className="text-lg font-bold text-foreground">{selectedMember.name}</h2>

@@ -36,6 +36,7 @@ import {
   saveMessages,
   updateChatTitleById,
   updateMessage,
+  getFamilyMemberById,
 } from "@/lib/db/queries";
 import type { DBMessage } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
@@ -203,12 +204,13 @@ export async function POST(request: Request) {
       .map((p) => (p as { text: string }).text)
       .join("") || "";
 
-    // Fetch health context and document chunks for the active family member
-    const [healthContext, documentContext] = await Promise.all([
+    // Fetch health context, document chunks, and member profile for the active family member
+    const [healthContext, documentContext, activeMember] = await Promise.all([
       activeMemberId ? fetchHealthContext(activeMemberId) : undefined,
       activeMemberId && lastUserMessageText
         ? fetchDocumentContext({ memberId: activeMemberId, query: lastUserMessageText })
         : undefined,
+      activeMemberId ? getFamilyMemberById({ id: activeMemberId }) : undefined,
     ]);
 
     const modelMessages = await convertToModelMessages(uiMessages);
@@ -232,7 +234,12 @@ export async function POST(request: Request) {
 
         const result = streamText({
           model: getLanguageModel(chatModel),
-          system: systemPrompt({ requestHints, healthContext, documentContext }),
+          system: systemPrompt({
+            requestHints,
+            healthContext,
+            documentContext,
+            activeMember: activeMember ?? undefined,
+          }),
           messages: modelMessages,
           stopWhen: stepCountIs(5),
           experimental_activeTools: activeTools,

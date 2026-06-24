@@ -13,6 +13,7 @@ import {
 import { deleteFamilyAction } from "@/app/(chat)/family/actions";
 import useSWR from "swr";
 import { fetcher } from "@/lib/utils";
+import { getDicebearAvatarUrl } from "@/lib/utils/avatar";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { User } from "next-auth";
@@ -211,7 +212,11 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                             onClick={() => setOpenMobile(false)}
                             className="flex items-center gap-1.5 px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/30 rounded-md transition-colors"
                           >
-                            <UserIcon className="size-3 text-muted-foreground/60" />
+                            <img
+                              src={getDicebearAvatarUrl(mem.name, mem.gender)}
+                              alt={mem.name}
+                              className="size-4 rounded-full bg-muted border border-border/20 shrink-0"
+                            />
                             <span className="truncate">{mem.name}</span>
                           </Link>
                         ))}
