@@ -6,7 +6,7 @@ import { DUMMY_PASSWORD } from "@/lib/constants";
 import { getUser } from "@/lib/db/queries";
 import { authConfig } from "./auth.config";
 
-export type UserType = "guest" | "regular";
+export type UserType = "regular";
 
 declare module "next-auth" {
   interface Session extends DefaultSession {
@@ -69,7 +69,6 @@ export const {
         return { ...user, type: "regular" };
       },
     }),
-
   ],
   callbacks: {
     jwt({ token, user }) {

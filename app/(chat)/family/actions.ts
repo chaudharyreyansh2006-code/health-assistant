@@ -1,12 +1,13 @@
 "use server";
 
 import { auth } from "@/app/(auth)/auth";
+import { isRegularSession } from "@/lib/auth/guards";
 import { createFamily, addFamilyMember } from "@/lib/db/queries";
 import { revalidatePath } from "next/cache";
 
 export async function createFamilyAction(name: string) {
   const session = await auth();
-  if (!session?.user?.id) {
+  if (!isRegularSession(session)) {
     throw new Error("Unauthorized");
   }
   const cleanName = name.trim();
@@ -37,7 +38,7 @@ export async function addFamilyMemberAction({
   gender?: string;
 }) {
   const session = await auth();
-  if (!session?.user?.id) {
+  if (!isRegularSession(session)) {
     throw new Error("Unauthorized");
   }
   if (!name.trim()) {

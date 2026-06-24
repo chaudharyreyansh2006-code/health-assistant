@@ -27,8 +27,6 @@ import type { Vote } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
 import type { ChatMessage } from "@/lib/types";
 import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
-import { useSession } from "next-auth/react";
-import { guestRegex } from "@/lib/constants";
 
 type ActiveChatContextValue = {
   chatId: string;
@@ -54,8 +52,6 @@ type ActiveChatContextValue = {
   setWebSearchEnabled: Dispatch<SetStateAction<boolean>>;
   urlContextEnabled: boolean;
   setUrlContextEnabled: Dispatch<SetStateAction<boolean>>;
-  isLoginOpen: boolean;
-  setIsLoginOpen: Dispatch<SetStateAction<boolean>>;
 };
 
 const ActiveChatContext = createContext<ActiveChatContextValue | null>(null);
@@ -109,7 +105,6 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     urlContextEnabledRef.current = urlContextEnabled;
   }, [urlContextEnabled]);
 
-  const [isLoginOpen, setIsLoginOpen] = useState(false);
 
   const { data: chatData, isLoading } = useSWR(
     isNewChat
@@ -119,14 +114,9 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     { revalidateOnFocus: false }
   );
 
-  const { data: session, status: authStatus } = useSession();
-  const isGuest = session?.user?.email ? guestRegex.test(session.user.email) : false;
-  const isAuthenticated = authStatus === "authenticated" && !isGuest;
 
   const searchParams = useSearchParams();
   const memberIdFromUrl = searchParams.get("memberId");
-  const showLogin = searchParams.get("showLogin");
-  const showRegister = searchParams.get("showRegister");
 
   useEffect(() => {
     if (memberIdFromUrl) {
@@ -138,13 +128,6 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     }
   }, [chatData, memberIdFromUrl]);
 
-  useEffect(() => {
-    if (!isAuthenticated && (showLogin === "true" || showRegister === "true")) {
-      setIsLoginOpen(true);
-    } else if (isAuthenticated) {
-      setIsLoginOpen(false);
-    }
-  }, [showLogin, showRegister, isAuthenticated]);
 
   const initialMessages: ChatMessage[] = isNewChat
     ? []
@@ -328,8 +311,6 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       setWebSearchEnabled,
       urlContextEnabled,
       setUrlContextEnabled,
-      isLoginOpen,
-      setIsLoginOpen,
     }),
     [
       chatId,
@@ -351,7 +332,6 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       memberId,
       webSearchEnabled,
       urlContextEnabled,
-      isLoginOpen,
     ]
   );
 

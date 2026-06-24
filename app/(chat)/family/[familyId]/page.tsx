@@ -1,4 +1,5 @@
 import { auth } from "@/app/(auth)/auth";
+import { isRegularSession } from "@/lib/auth/guards";
 import { redirect } from "next/navigation";
 import { getFamilyById, getFamilyMembers } from "@/lib/db/queries";
 import { FamilyWorkspaceClient } from "./family-workspace-client";
@@ -16,8 +17,8 @@ type Props = {
 
 export default async function FamilyWorkspacePage({ params }: Props) {
   const session = await auth();
-  if (!session?.user?.id) {
-    redirect("/?showLogin=true");
+  if (!isRegularSession(session)) {
+    redirect("/login");
   }
 
   const { familyId } = await params;

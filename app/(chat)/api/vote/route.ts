@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { auth } from "@/app/(auth)/auth";
+import { isRegularSession } from "@/lib/auth/guards";
 import { getChatById, getVotesByChatId, voteMessage } from "@/lib/db/queries";
 import { ChatbotError } from "@/lib/errors";
 
@@ -22,7 +23,7 @@ export async function GET(request: Request) {
 
   const session = await auth();
 
-  if (!session?.user) {
+  if (!isRegularSession(session)) {
     return new ChatbotError("unauthorized:vote").toResponse();
   }
 
@@ -60,7 +61,7 @@ export async function PATCH(request: Request) {
 
   const session = await auth();
 
-  if (!session?.user) {
+  if (!isRegularSession(session)) {
     return new ChatbotError("unauthorized:vote").toResponse();
   }
 

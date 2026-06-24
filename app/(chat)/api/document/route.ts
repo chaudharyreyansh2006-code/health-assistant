@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { auth } from "@/app/(auth)/auth";
+import { isRegularSession } from "@/lib/auth/guards";
 import type { ArtifactKind } from "@/components/chat/artifact";
 import {
   deleteDocumentsByIdAfterTimestamp,
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
 
   const session = await auth();
 
-  if (!session?.user) {
+  if (!isRegularSession(session)) {
     return new ChatbotError("unauthorized:document").toResponse();
   }
 
@@ -61,7 +62,7 @@ export async function POST(request: Request) {
 
   const session = await auth();
 
-  if (!session?.user) {
+  if (!isRegularSession(session)) {
     return new ChatbotError("not_found:document").toResponse();
   }
 
@@ -130,7 +131,7 @@ export async function DELETE(request: Request) {
 
   const session = await auth();
 
-  if (!session?.user) {
+  if (!isRegularSession(session)) {
     return new ChatbotError("unauthorized:document").toResponse();
   }
 

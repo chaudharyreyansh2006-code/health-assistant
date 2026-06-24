@@ -26,9 +26,6 @@ import { usePathname } from "next/navigation";
 import { submitEditedMessage } from "./message-editor";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
-import { useSession } from "next-auth/react";
-import { LoginModal } from "./login-modal";
-import { guestRegex } from "@/lib/constants";
 
 export function ChatShell() {
   const pathname = usePathname();
@@ -53,24 +50,10 @@ export function ChatShell() {
     showCreditCardAlert,
     setShowCreditCardAlert,
     memberId,
-    setIsLoginOpen,
   } = useActiveChat();
 
-  const { data: session, status: authStatus } = useSession();
-  const isGuest = session?.user?.email ? guestRegex.test(session.user.email) : false;
-  const isAuthenticated = authStatus === "authenticated" && !isGuest;
 
-  const handleSendMessage = async (msg: any) => {
-    if (!isAuthenticated) {
-      setIsLoginOpen(true);
-      return;
-    }
-    return sendMessage(msg);
-  };
-
-  const isChatRoute =
-    pathname.startsWith("/chat") ||
-    (pathname === "/" && (!isAuthenticated || memberId !== null));
+  const isChatRoute = pathname.startsWith("/chat") || (pathname === "/" && memberId !== null);
 
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(
     null
@@ -164,7 +147,7 @@ export function ChatShell() {
                           });
                           setInput("");
                         }
-                      : handleSendMessage
+                      : sendMessage
                   }
                   setAttachments={setAttachments}
                   setInput={setInput}
@@ -199,7 +182,6 @@ export function ChatShell() {
 
       <DataStreamHandler />
 
-      <LoginModal />
 
       <AlertDialog
         onOpenChange={setShowCreditCardAlert}

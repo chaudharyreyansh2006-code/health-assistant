@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import Script from "next/script";
 import { Suspense } from "react";
 import { Toaster } from "sonner";
@@ -7,8 +8,8 @@ import { DataStreamProvider } from "@/components/chat/data-stream-provider";
 import { ChatShell } from "@/components/chat/shell";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { ActiveChatProvider } from "@/hooks/use-active-chat";
+import { isRegularSession } from "@/lib/auth/guards";
 import { auth } from "../(auth)/auth";
-import { guestRegex } from "@/lib/constants";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -28,14 +29,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
 async function SidebarShell({ children }: { children: React.ReactNode }) {
   const [session, cookieStore] = await Promise.all([auth(), cookies()]);
+  if (!isRegularSession(session)) {
+    redirect("/login");
+  }
+
   const isCollapsed = cookieStore.get("sidebar_state")?.value !== "true";
-  const isGuest = session?.user?.email ? guestRegex.test(session.user.email) : false;
-  const user = isGuest ? undefined : session?.user;
 
   return (
     <ActiveChatProvider>
       <SidebarProvider defaultOpen={!isCollapsed}>
-        <AppSidebar user={user} />
+        <AppSidebar user={session.user} />
         <SidebarInset>
           <Toaster
             position="top-center"

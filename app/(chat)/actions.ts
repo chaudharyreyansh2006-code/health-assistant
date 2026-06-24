@@ -3,6 +3,7 @@
 import { generateText, type UIMessage } from "ai";
 import { cookies } from "next/headers";
 import { auth } from "@/app/(auth)/auth";
+import { isRegularSession } from "@/lib/auth/guards";
 import type { VisibilityType } from "@/components/chat/visibility-selector";
 import { titleModel } from "@/lib/ai/models";
 import { titlePrompt } from "@/lib/ai/prompts";
@@ -38,7 +39,7 @@ export async function generateTitleFromUserMessage({
 
 export async function deleteTrailingMessages({ id }: { id: string }) {
   const session = await auth();
-  if (!session?.user?.id) {
+  if (!isRegularSession(session)) {
     throw new Error("Unauthorized");
   }
 
@@ -66,7 +67,7 @@ export async function updateChatVisibility({
   visibility: VisibilityType;
 }) {
   const session = await auth();
-  if (!session?.user?.id) {
+  if (!isRegularSession(session)) {
     throw new Error("Unauthorized");
   }
 

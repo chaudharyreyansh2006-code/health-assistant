@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { auth } from "@/app/(auth)/auth";
+import { isRegularSession } from "@/lib/auth/guards";
 import { deleteAllChatsByUserId, getChatsByUserId } from "@/lib/db/queries";
 import { ChatbotError } from "@/lib/errors";
 
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
 
   const session = await auth();
 
-  if (!session?.user) {
+  if (!isRegularSession(session)) {
     return new ChatbotError("unauthorized:chat").toResponse();
   }
 
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest) {
 export async function DELETE() {
   const session = await auth();
 
-  if (!session?.user) {
+  if (!isRegularSession(session)) {
     return new ChatbotError("unauthorized:chat").toResponse();
   }
 

@@ -1,8 +1,6 @@
 import { generateId } from "ai";
-import { getUnixTime } from "date-fns";
-
 export function generateRandomTestUser() {
-  const email = `test-${getUnixTime(new Date())}@playwright.com`;
+  const email = `test-${Date.now()}-${Math.random().toString(36).slice(2)}@playwright.com`;
   const password = generateId();
 
   return {

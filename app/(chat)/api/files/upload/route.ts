@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/app/(auth)/auth";
+import { isRegularSession } from "@/lib/auth/guards";
 
 const FileSchema = z.object({
   file: z
@@ -18,7 +19,7 @@ const FileSchema = z.object({
 export async function POST(request: Request) {
   const session = await auth();
 
-  if (!session) {
+  if (!isRegularSession(session)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

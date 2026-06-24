@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
-import { guestRegex, isDevelopmentEnvironment } from "./lib/constants";
+import { getSafeCallbackUrl, isRegularToken } from "./lib/auth/guards";
+import { isDevelopmentEnvironment } from "./lib/constants";
+
+const PUBLIC_PATHS = new Set(["/login", "/register"]);
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -13,33 +16,18 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  const isAuthPage = PUBLIC_PATHS.has(pathname);
   const token = await getToken({
     req: request,
     secret: process.env.AUTH_SECRET,
+    secureCookie: !isDevelopmentEnvironment,
   });
 
   const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+  const isAuthenticated = isRegularToken(token);
 
-  const isGuest = token ? guestRegex.test(token.email ?? "") : false;
-
-  if (!token || isGuest) {
-    if (["/", "/login", "/register"].includes(pathname)) {
-      if (pathname === "/login") {
-        const url = new URL(`${base}/`, request.url);
-        url.searchParams.set("showLogin", "true");
-        request.nextUrl.searchParams.forEach((value, key) => {
-          if (key !== "showLogin") url.searchParams.set(key, value);
-        });
-        return NextResponse.redirect(url);
-      }
-      if (pathname === "/register") {
-        const url = new URL(`${base}/`, request.url);
-        url.searchParams.set("showRegister", "true");
-        request.nextUrl.searchParams.forEach((value, key) => {
-          if (key !== "showRegister") url.searchParams.set(key, value);
-        });
-        return NextResponse.redirect(url);
-      }
+  if (!isAuthenticated) {
+    if (isAuthPage) {
       return NextResponse.next();
     }
 
@@ -47,14 +35,16 @@ export async function proxy(request: NextRequest) {
       return new Response("Unauthorized", { status: 401 });
     }
 
-    const redirectUrl = encodeURIComponent(request.nextUrl.pathname + request.nextUrl.search);
-    return NextResponse.redirect(
-      new URL(`${base}/?showLogin=true&callbackUrl=${redirectUrl}`, request.url)
-    );
+    const url = new URL(`${base}/login`, request.url);
+    url.searchParams.set("callbackUrl", pathname + request.nextUrl.search);
+    return NextResponse.redirect(url);
   }
 
-  if (token && ["/login", "/register"].includes(pathname)) {
-    return NextResponse.redirect(new URL(`${base}/`, request.url));
+  if (isAuthPage) {
+    const callbackUrl = getSafeCallbackUrl(
+      request.nextUrl.searchParams.get("callbackUrl")
+    );
+    return NextResponse.redirect(new URL(`${base}${callbackUrl}`, request.url));
   }
 
   return NextResponse.next();

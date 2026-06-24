@@ -1,6 +1,6 @@
 import { auth } from "../(auth)/auth";
 import { redirect } from "next/navigation";
-import { guestRegex } from "@/lib/constants";
+import { isRegularSession } from "@/lib/auth/guards";
 import {
   getFamiliesByUserId,
   createFamily,
@@ -33,9 +33,8 @@ export const metadata = {
 
 export default async function Page({ searchParams }: Props) {
   const session = await auth();
-  const isGuest = session?.user?.email ? guestRegex.test(session.user.email) : false;
-  if (!session?.user?.id || isGuest) {
-    return null;
+  if (!isRegularSession(session)) {
+    redirect("/login");
   }
 
   const { memberId } = await searchParams;

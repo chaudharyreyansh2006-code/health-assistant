@@ -12,6 +12,7 @@ import { after } from "next/server";
 import { createResumableStreamContext } from "resumable-stream";
 import { auth, type UserType } from "@/app/(auth)/auth";
 import { entitlementsByUserType } from "@/lib/ai/entitlements";
+import { isRegularSession } from "@/lib/auth/guards";
 import {
   allowedModelIds,
   chatModels,
@@ -24,7 +25,7 @@ import { getLanguageModel } from "@/lib/ai/providers";
 import { google } from "@ai-sdk/google";
 import { saveHealthMemory } from "@/lib/ai/tools/save-health-memory";
 import { requestHealthSuggestions } from "@/lib/ai/tools/request-health-suggestions";
-import { guestRegex, isProductionEnvironment } from "@/lib/constants";
+import { isProductionEnvironment } from "@/lib/constants";
 import {
   createStreamId,
   deleteChatById,
@@ -83,8 +84,7 @@ export async function POST(request: Request) {
       auth(),
     ]);
 
-    const isGuest = session?.user?.email ? guestRegex.test(session.user.email) : false;
-    if (!session?.user || isGuest) {
+    if (!isRegularSession(session)) {
       return new ChatbotError("unauthorized:chat").toResponse();
     }
 
@@ -376,7 +376,7 @@ export async function DELETE(request: Request) {
 
   const session = await auth();
 
-  if (!session?.user) {
+  if (!isRegularSession(session)) {
     return new ChatbotError("unauthorized:chat").toResponse();
   }
 

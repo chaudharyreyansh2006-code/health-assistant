@@ -1,11 +1,12 @@
 import { auth } from "@/app/(auth)/auth";
+import { isRegularSession } from "@/lib/auth/guards";
 import { put } from "@vercel/blob";
 import { saveMedicalDocument, saveDocumentChunks } from "@/lib/db/queries";
 import { extractTextFromFile, chunkText, generateEmbeddings } from "@/lib/ai/document-processor";
 
 export async function POST(request: Request) {
   const session = await auth();
-  if (!session?.user) {
+  if (!isRegularSession(session)) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 

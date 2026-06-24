@@ -1,4 +1,5 @@
 import { auth } from "@/app/(auth)/auth";
+import { isRegularSession } from "@/lib/auth/guards";
 import { redirect } from "next/navigation";
 import { getFamiliesByUserId } from "@/lib/db/queries";
 import { CreateFamilyForm } from "./create-family-form";
@@ -12,8 +13,8 @@ export const metadata = {
 
 export default async function FamilyPage() {
   const session = await auth();
-  if (!session?.user?.id) {
-    redirect("/?showLogin=true");
+  if (!isRegularSession(session)) {
+    redirect("/login");
   }
 
   const families = await getFamiliesByUserId({ userId: session.user.id });

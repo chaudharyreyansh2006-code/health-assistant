@@ -1,9 +1,10 @@
 import { auth } from "@/app/(auth)/auth";
+import { isRegularSession } from "@/lib/auth/guards";
 import { getFamilyMemberById } from "@/lib/db/queries";
 
 export async function GET(request: Request) {
   const session = await auth();
-  if (!session?.user) {
+  if (!isRegularSession(session)) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
