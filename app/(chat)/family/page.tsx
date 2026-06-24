@@ -67,7 +67,7 @@ export default async function FamilyPage() {
                 <Link
                   key={f.id}
                   href={`/family/${f.id}`}
-                  className="group relative flex items-center justify-between p-5 rounded-2xl border border-border/50 bg-card/35 hover:bg-card/75 transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:hover:shadow-[0_8px_30px_rgb(0,0,0,0.2)]"
+                  className="group relative flex items-center justify-between p-5 rounded-2xl border border-border bg-card/35 hover:bg-card/65 transition-all duration-300 hover:scale-[1.01]"
                 >
                   <DeleteFamilyButton familyId={f.id} familyName={f.name} />
                   <div className="flex items-center gap-4">

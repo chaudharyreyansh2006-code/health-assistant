@@ -71,11 +71,11 @@ export function AddMemberDialog({ familyId }: { familyId: string }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-border/50 rounded-3xl bg-card/15 hover:bg-card/30 hover:border-primary/50 transition-all duration-300 w-36 h-36 gap-2 group">
-          <div className="p-3 bg-muted rounded-full group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-300">
+        <button className="relative flex flex-col items-center justify-center w-36 h-36 rounded-[2rem] bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_20px_40px_rgb(0,0,0,0.08)] transition-all duration-500 ease-out hover:-translate-y-2 gap-3 group">
+          <div className="p-3.5 rounded-full bg-black/5 dark:bg-white/5 text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground group-hover:scale-110 transition-all duration-500 ease-out">
             <PlusIcon className="size-5" />
           </div>
-          <span className="text-xs font-semibold text-muted-foreground group-hover:text-foreground transition-colors duration-250">
+          <span className="text-[13px] font-semibold text-muted-foreground group-hover:text-foreground tracking-tight transition-colors duration-300">
             Add Profile
           </span>
         </button>
