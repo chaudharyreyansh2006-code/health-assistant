@@ -1,6 +1,6 @@
 import { google } from "@ai-sdk/google";
 import { embedMany, generateText } from "ai";
-import { PDFParse } from "pdf-parse";
+import { uploadBlobToGoogleFiles } from "@/lib/ai/upload-blob-to-google";
 import { getLanguageModel } from "@/lib/ai/providers";
 
 const IMAGE_MIME_PREFIXES = ["image/"];
@@ -13,30 +13,28 @@ function isImageType(fileType: string): boolean {
 /**
  * Extracts raw text from a file buffer based on the file content type.
  *
- * PDFs are parsed with `pdf-parse` v2's `PDFParse` class (the old default-export
- * callable from v1 was removed, which is why uploads broke after the upgrade).
- * Images are run through a vision-capable Gemini model that transcribes any
- * readable text (OCR) and describes the medical content so it can be embedded
- * for RAG just like a text report.
+ * PDFs and images are both read by a vision-capable Gemini model that
+ * transcribes every readable piece of content (OCR) and describes any
+ * visual medical context so the chunks are searchable via the same RAG
+ * pipeline as plain text.
+ *
+ * We deliberately do NOT use a local PDF parser (e.g. `pdf-parse`) because
+ * its `pdfjs-dist@5` dependency hard-requires browser-only globals like
+ * `DOMMatrix` / `ImageData` / `Path2D` and crashes the Node server with
+ * `ReferenceError: DOMMatrix is not defined`. Sending the PDF straight to
+ * Gemini via the Files API is more reliable and handles scanned/image-only
+ * PDFs out of the box.
  */
 export async function extractTextFromFile(
   fileBuffer: Buffer,
-  fileType: string
+  fileType: string,
+  fileName?: string
 ): Promise<string> {
   const mime = fileType.toLowerCase();
+  const safeName = fileName || "document";
 
   if (mime.includes("pdf")) {
-    try {
-      const parser = new PDFParse({ data: new Uint8Array(fileBuffer) });
-      const result = await parser.getText();
-      await parser.destroy();
-      return result.text || "";
-    } catch (err) {
-      console.error("Failed to parse PDF document:", err);
-      throw new Error(
-        "Could not parse PDF. Make sure it is not password-protected or corrupt."
-      );
-    }
+    return extractTextFromPdf(fileBuffer, mime, safeName);
   }
 
   if (isImageType(mime)) {
@@ -45,6 +43,62 @@ export async function extractTextFromFile(
 
   // Default fallback: treat as text file
   return fileBuffer.toString("utf-8");
+}
+
+/**
+ * Uploads a PDF to Google Files and asks Gemini to read every page. Gemini's
+ * multimodal PDF ingestion works for both digital and scanned PDFs, so this
+ * subsumes what a local text extractor would have done — without dragging in
+ * browser-only polyfills on the server.
+ */
+async function extractTextFromPdf(
+  pdfBuffer: Buffer,
+  mimeType: string,
+  fileName: string
+): Promise<string> {
+  const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      "GOOGLE_GENERATIVE_AI_API_KEY is required to process PDF documents."
+    );
+  }
+
+  let uploaded;
+  try {
+    uploaded = await uploadBlobToGoogleFiles({
+      buffer: new Uint8Array(pdfBuffer),
+      mediaType: mimeType,
+      filename: fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`,
+      apiKey,
+    });
+  } catch (err) {
+    console.error("Failed to upload PDF to Google Files:", err);
+    throw new Error(
+      "Could not upload the PDF for AI processing. Please retry in a moment."
+    );
+  }
+
+  const { text } = await generateText({
+    model: getLanguageModel("gemini-3.1-flash-lite"),
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "You are a medical document OCR assistant. Extract ALL readable text from this PDF verbatim, preserving lab values, medication names, dosages, dates, diagnoses, and section headings. If the document contains tables, format them as readable text. If there is no readable text, write a concise factual description of the medical content shown. Output only the extracted text or description, no preamble.",
+          },
+          {
+            type: "file",
+            data: new URL(uploaded.uri),
+            mediaType: uploaded.mimeType,
+          },
+        ],
+      },
+    ],
+  });
+
+  return text?.trim() || "";
 }
 
 /**

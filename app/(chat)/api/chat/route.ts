@@ -17,7 +17,6 @@ import {
   fetchDocumentContext,
   fetchHealthContext,
 } from "@/lib/ai/health-context";
-import { inlinePrivateFileParts } from "@/lib/ai/inline-private-files";
 import {
   allowedModelIds,
   DEFAULT_CHAT_MODEL,
@@ -27,6 +26,7 @@ import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { getLanguageModel } from "@/lib/ai/providers";
 import { requestHealthSuggestions } from "@/lib/ai/tools/request-health-suggestions";
 import { saveHealthMemory } from "@/lib/ai/tools/save-health-memory";
+import { toGoogleFileModelMessages } from "@/lib/ai/upload-blob-to-google";
 import { isRegularSession } from "@/lib/auth/guards";
 import { isProductionEnvironment } from "@/lib/constants";
 import {
@@ -57,81 +57,6 @@ function getStreamContext() {
   } catch (_) {
     return null;
   }
-}
-
-type ModelMessages = Awaited<ReturnType<typeof convertToModelMessages>>;
-
-type FileContentPart = { type: "file"; data: string; mediaType: string };
-
-type ArrayContent = Extract<ModelMessages[number]["content"], unknown[]>;
-
-function isArrayContent(
-  content: ModelMessages[number]["content"]
-): content is ArrayContent {
-  return Array.isArray(content);
-}
-
-function normalizeFileDataUrlInContent(content: ArrayContent): ArrayContent {
-  return content.map((part) => {
-    if (
-      part.type !== "file" ||
-      typeof (part as { data?: unknown }).data !== "string" ||
-      !(part as { data: string }).data.startsWith("data:")
-    ) {
-      return part;
-    }
-
-    const data = (part as { data: string }).data;
-    const parsed = parseBase64DataUrl(data);
-    if (!parsed) {
-      return part;
-    }
-
-    const filePart = part as FileContentPart;
-
-    return {
-      ...filePart,
-      data: parsed.base64,
-      mediaType: parsed.mediaType || filePart.mediaType,
-    };
-  }) as ArrayContent;
-}
-
-async function toNormalizedModelMessages(
-  messages: Parameters<typeof inlinePrivateFileParts>[0]
-): Promise<ModelMessages> {
-  const modelMessages = (await convertToModelMessages(messages)) as ModelMessages;
-
-  const normalizedMessages: ModelMessages = [];
-
-  for (const message of modelMessages) {
-    if (!isArrayContent(message.content)) {
-      normalizedMessages.push(message);
-      continue;
-    }
-
-    const nextContent = normalizeFileDataUrlInContent(message.content);
-
-    normalizedMessages.push({
-      ...message,
-      content: nextContent,
-    } as ModelMessages[number]);
-  }
-
-  return normalizedMessages;
-}
-
-function parseBase64DataUrl(dataUrl: string) {
-  const match = /^data:([^;,]+);base64,(.+)$/s.exec(dataUrl);
-
-  if (!match) {
-    return null;
-  }
-
-  return {
-    mediaType: match[1],
-    base64: match[2],
-  };
 }
 
 export { getStreamContext };
@@ -310,12 +235,17 @@ export async function POST(request: Request) {
       activeMemberId ? getFamilyMemberById({ id: activeMemberId }) : undefined,
     ]);
 
-    // Inline private-blob file parts (chat image attachments) into base64
-    // data URLs so the model receives the actual image bytes. The stored/UI
-    // messages keep the authed-route URL for browser previews; only the copy
-    // handed to the model is rewritten.
-    const modelInputMessages = await inlinePrivateFileParts(uiMessages);
-    const modelMessages = await toNormalizedModelMessages(modelInputMessages);
+    // Upload chat image attachments to Google Files so the model can
+    // reference them as `fileData.fileUri` instead of trying to download
+    // our authed route. The Google provider already turns a `URL` part
+    // into `fileData.fileUri`; `supportedUrls` matches any https:// URL so
+    // the SDK does not re-download. Falls back to inline base64 if the
+    // upload fails so the chat never breaks on a transient upload error.
+    const googleApiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    const modelMessages = await toGoogleFileModelMessages(
+      await convertToModelMessages(uiMessages),
+      googleApiKey
+    );
 
     const stream = createUIMessageStream({
       originalMessages: isToolApprovalFlow ? uiMessages : undefined,

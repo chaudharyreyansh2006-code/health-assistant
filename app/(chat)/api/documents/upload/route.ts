@@ -88,7 +88,11 @@ export async function POST(request: Request) {
 
     // 1. Extract text and chunk it. We surface a clean error if the PDF is
     //    password-protected / corrupt so the client can show something useful.
-    const text = await extractTextFromFile(buffer, fileType);
+    const text = await extractTextFromFile(
+      buffer,
+      fileType,
+      (file as File).name
+    );
     const chunks = chunkText(text);
 
     if (chunks.length === 0) {
