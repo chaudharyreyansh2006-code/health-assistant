@@ -22,13 +22,14 @@ import { cn } from "@/lib/utils";
 import { Artifact } from "./artifact";
 import { ChatHeader } from "./chat-header";
 import { DataStreamHandler } from "./data-stream-handler";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { submitEditedMessage } from "./message-editor";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
 
 export function ChatShell() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const {
     chatId,
@@ -53,7 +54,15 @@ export function ChatShell() {
   } = useActiveChat();
 
 
-  const isChatRoute = pathname.startsWith("/chat") || (pathname === "/" && memberId !== null);
+  // Single source of truth that matches the server (app/(chat)/page.tsx
+  // hides the welcome portal when `?memberId=` is present). The sticky
+  // `memberId` state from useActiveChat is deliberately NOT cleared when the
+  // URL drops the param, so using it here caused the welcome screen and the
+  // chat to render at the same time after returning to "/".
+  const memberIdFromUrl = searchParams.get("memberId");
+  const isChatRoute =
+    pathname.startsWith("/chat") ||
+    (pathname === "/" && memberIdFromUrl !== null);
 
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(
     null
