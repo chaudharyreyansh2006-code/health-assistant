@@ -7,12 +7,11 @@ import {
   ArrowUpIcon,
   BrainIcon,
   EyeIcon,
-  LockIcon,
-  WrenchIcon,
   Globe as GlobeIcon,
   Link as LinkIcon,
+  LockIcon,
+  WrenchIcon,
 } from "lucide-react";
-import { useActiveChat } from "@/hooks/use-active-chat";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import {
@@ -39,6 +38,7 @@ import {
   ModelSelectorName,
   ModelSelectorTrigger,
 } from "@/components/ai-elements/model-selector";
+import { useActiveChat } from "@/hooks/use-active-chat";
 import {
   type ChatModel,
   chatModels,
@@ -280,11 +280,23 @@ function PureMultimodalInput({
 
       if (response.ok) {
         const data = await response.json();
-        const { url, pathname, contentType } = data;
+        const { pathname, contentType } = data;
+
+        // Blobs live in a PRIVATE Vercel Blob store, so the raw `url` is not
+        // usable by the browser. Route previews through the authenticated
+        // download endpoint (same-origin, session-cookie auth) which calls
+        // `get(pathname, { access: "private" })` server-side. The chat route
+        // recognises this URL and inlines the bytes into the model message.
+        const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+        const origin =
+          typeof window !== "undefined" ? window.location.origin : "";
+        const downloadUrl = `${origin}${basePath}/api/files/download?pathname=${encodeURIComponent(
+          pathname
+        )}`;
 
         return {
-          url,
-          name: pathname,
+          url: downloadUrl,
+          name: file.name,
           contentType,
         };
       }
@@ -536,8 +548,6 @@ function PureMultimodalInput({
               selectedModelId={selectedModelId}
             />
             <Button
-              type="button"
-              variant="ghost"
               className={cn(
                 "h-7 w-7 rounded-lg border p-1 transition-colors",
                 webSearchEnabled
@@ -545,14 +555,18 @@ function PureMultimodalInput({
                   : "text-muted-foreground/50 border-border/40 hover:text-foreground"
               )}
               onClick={() => setWebSearchEnabled(!webSearchEnabled)}
-              title={webSearchEnabled ? "Disable Web Search Grounding" : "Enable Web Search Grounding"}
+              title={
+                webSearchEnabled
+                  ? "Disable Web Search Grounding"
+                  : "Enable Web Search Grounding"
+              }
+              type="button"
+              variant="ghost"
             >
               <GlobeIcon className="size-3.5" />
             </Button>
 
             <Button
-              type="button"
-              variant="ghost"
               className={cn(
                 "h-7 w-7 rounded-lg border p-1 transition-colors",
                 urlContextEnabled
@@ -560,7 +574,13 @@ function PureMultimodalInput({
                   : "text-muted-foreground/50 border-border/40 hover:text-foreground"
               )}
               onClick={() => setUrlContextEnabled(!urlContextEnabled)}
-              title={urlContextEnabled ? "Disable URL Context Fetching" : "Enable URL Context Fetching"}
+              title={
+                urlContextEnabled
+                  ? "Disable URL Context Fetching"
+                  : "Enable URL Context Fetching"
+              }
+              type="button"
+              variant="ghost"
             >
               <LinkIcon className="size-3.5" />
             </Button>

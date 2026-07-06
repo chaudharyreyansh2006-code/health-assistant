@@ -10,30 +10,24 @@ import {
   gte,
   inArray,
   lt,
-  sql,
   type SQL,
+  sql,
 } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import type { ArtifactKind } from "@/components/chat/artifact";
 import type { VisibilityType } from "@/components/chat/visibility-selector";
 import { ChatbotError } from "../errors";
-import { generateUUID } from "../utils";
 import {
   type Chat,
   chat,
   type DBMessage,
   document,
   documentChunk,
-  type DocumentChunk,
   family,
-  type Family,
   familyMember,
-  type FamilyMember,
   healthMemory,
-  type HealthMemory,
   medicalDocument,
-  type MedicalDocument,
   message,
   type Suggestion,
   stream,
@@ -68,7 +62,6 @@ export async function createUser(email: string, password: string) {
   }
 }
 
-
 export async function saveChat({
   id,
   userId,
@@ -94,7 +87,6 @@ export async function saveChat({
   } catch (_error) {
     throw new ChatbotError("bad_request:database", "Failed to save chat");
   }
-
 }
 
 export async function deleteChatById({ id }: { id: string }) {
@@ -652,11 +644,7 @@ export async function createFamily({
   }
 }
 
-export async function getFamiliesByUserId({
-  userId,
-}: {
-  userId: string;
-}) {
+export async function getFamiliesByUserId({ userId }: { userId: string }) {
   try {
     return await db
       .select()
@@ -699,10 +687,7 @@ export async function deleteFamilyById({
       .delete(family)
       .where(and(eq(family.id, id), eq(family.createdBy, userId)));
   } catch (_error) {
-    throw new ChatbotError(
-      "bad_request:database",
-      "Failed to delete family"
-    );
+    throw new ChatbotError("bad_request:database", "Failed to delete family");
   }
 }
 
@@ -737,11 +722,7 @@ export async function addFamilyMember({
   }
 }
 
-export async function getFamilyMembers({
-  familyId,
-}: {
-  familyId: string;
-}) {
+export async function getFamilyMembers({ familyId }: { familyId: string }) {
   try {
     return await db
       .select()
@@ -805,11 +786,7 @@ export async function deleteFamilyMemberById({ id }: { id: string }) {
 // Health Memory Queries
 // ============================================================
 
-export async function getHealthMemories({
-  memberId,
-}: {
-  memberId: string;
-}) {
+export async function getHealthMemories({ memberId }: { memberId: string }) {
   try {
     return await db
       .select()
@@ -894,7 +871,7 @@ export async function upsertHealthMemory({
     });
     throw new ChatbotError(
       "bad_request:database",
-      `Failed to upsert health memory (${code}): ${underlying}`,
+      `Failed to upsert health memory (${code}): ${underlying}`
     );
   }
 }
@@ -906,18 +883,18 @@ export async function upsertHealthMemory({
 export async function saveMedicalDocument({
   memberId,
   fileName,
-  url,
+  blobPathname,
   fileType,
 }: {
   memberId: string;
   fileName: string;
-  url: string;
+  blobPathname: string;
   fileType: string;
 }) {
   try {
     const [created] = await db
       .insert(medicalDocument)
-      .values({ memberId, fileName, url, fileType })
+      .values({ memberId, fileName, blobPathname, fileType })
       .returning();
     return created;
   } catch (_error) {
@@ -934,8 +911,16 @@ export async function getMedicalDocumentsByMemberId({
   memberId: string;
 }) {
   try {
+    // NOTE: blobPathname is intentionally excluded — it must never reach the
+    // client. File reads go through the ownership-checked download route by id.
     return await db
-      .select()
+      .select({
+        id: medicalDocument.id,
+        memberId: medicalDocument.memberId,
+        fileName: medicalDocument.fileName,
+        fileType: medicalDocument.fileType,
+        uploadedAt: medicalDocument.uploadedAt,
+      })
       .from(medicalDocument)
       .where(eq(medicalDocument.memberId, memberId))
       .orderBy(desc(medicalDocument.uploadedAt));
@@ -943,6 +928,58 @@ export async function getMedicalDocumentsByMemberId({
     throw new ChatbotError(
       "bad_request:database",
       "Failed to get medical documents"
+    );
+  }
+}
+
+export async function getMedicalDocumentById({ id }: { id: string }) {
+  try {
+    const [result] = await db
+      .select()
+      .from(medicalDocument)
+      .where(eq(medicalDocument.id, id))
+      .limit(1);
+    return result ?? null;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get medical document by id"
+    );
+  }
+}
+
+/**
+ * Verifies that a medical document belongs to a family member owned by the
+ * given user (family.createdBy === userId). Returns the document row if
+ * ownership checks out, otherwise null.
+ */
+export async function getOwnedMedicalDocumentById({
+  id,
+  userId,
+}: {
+  id: string;
+  userId: string;
+}) {
+  try {
+    const [result] = await db
+      .select({
+        id: medicalDocument.id,
+        memberId: medicalDocument.memberId,
+        fileName: medicalDocument.fileName,
+        blobPathname: medicalDocument.blobPathname,
+        fileType: medicalDocument.fileType,
+        uploadedAt: medicalDocument.uploadedAt,
+      })
+      .from(medicalDocument)
+      .innerJoin(familyMember, eq(familyMember.id, medicalDocument.memberId))
+      .innerJoin(family, eq(family.id, familyMember.familyId))
+      .where(and(eq(medicalDocument.id, id), eq(family.createdBy, userId)))
+      .limit(1);
+    return result ?? null;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get medical document by id"
     );
   }
 }
@@ -990,8 +1027,7 @@ export async function similaritySearchChunks({
       .select({
         content: documentChunk.content,
         fileName: medicalDocument.fileName,
-        similarity:
-          sql<number>`1 - (${documentChunk.embedding} <=> ${vectorStr}::vector)`,
+        similarity: sql<number>`1 - (${documentChunk.embedding} <=> ${vectorStr}::vector)`,
       })
       .from(documentChunk)
       .innerJoin(
@@ -1004,9 +1040,7 @@ export async function similaritySearchChunks({
           sql`1 - (${documentChunk.embedding} <=> ${vectorStr}::vector) > ${threshold}`
         )
       )
-      .orderBy(
-        sql`${documentChunk.embedding} <=> ${vectorStr}::vector`
-      )
+      .orderBy(sql`${documentChunk.embedding} <=> ${vectorStr}::vector`)
       .limit(limit);
 
     return results;

@@ -1,4 +1,3 @@
-import Image from "next/image";
 import type { Attachment } from "@/lib/types";
 import { Spinner } from "../ui/spinner";
 import { CrossSmallIcon } from "./icons";
@@ -20,12 +19,16 @@ export const PreviewAttachment = ({
       data-testid="input-attachment-preview"
     >
       {contentType?.startsWith("image") ? (
-        <Image
+        // Plain <img>: the URL points at the authenticated download route
+        // (private Vercel Blob store). next/image's optimizer fetches the
+        // source server-side WITHOUT forwarding the session cookie, so it
+        // would 401 on this authed route. The browser <img> fetch carries
+        // the cookie directly. Transient user uploads don't need optimization.
+        // biome-ignore lint/performance/noImgElement: authed route needs cookie-bearing browser fetch
+        <img
           alt={name ?? "attachment"}
           className="size-full object-cover"
-          height={96}
           src={url}
-          width={96}
         />
       ) : (
         <div className="flex size-full items-center justify-center text-muted-foreground text-xs">

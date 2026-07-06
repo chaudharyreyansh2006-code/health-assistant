@@ -1,20 +1,28 @@
 "use client";
 
+import {
+  AlertTriangleIcon,
+  ExternalLinkIcon,
+  FileTextIcon,
+  Loader2Icon,
+  UploadCloudIcon,
+} from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import useSWR from "swr";
 import { Button } from "@/components/ui/button";
 import { fetcher } from "@/lib/utils";
-import {
-  FileTextIcon,
-  UploadCloudIcon,
-  Loader2Icon,
-  CheckCircle2Icon,
-  AlertTriangleIcon,
-  ExternalLinkIcon,
-  TrashIcon,
-} from "lucide-react";
-import { toast } from "sonner";
-import type { MedicalDocument } from "@/lib/db/schema";
+
+// The documents list endpoint intentionally omits the blob pathname (and any
+// URL) for privacy — files are only reachable via the ownership-checked
+// download route. This is the client-facing shape of that list.
+type ListedMedicalDocument = {
+  id: string;
+  memberId: string;
+  fileName: string;
+  fileType: string;
+  uploadedAt: Date | string;
+};
 
 export function DocumentUpload({ memberId }: { memberId: string }) {
   const [uploading, setUploading] = useState(false);
@@ -24,24 +32,41 @@ export function DocumentUpload({ memberId }: { memberId: string }) {
     data: documents,
     error,
     mutate,
-  } = useSWR<MedicalDocument[]>(
+  } = useSWR<ListedMedicalDocument[]>(
     memberId ? `/api/documents?memberId=${memberId}` : null,
     fetcher
   );
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      return;
+    }
 
-    // Support PDF and plain text files. We also accept legacy .txt/.pdf
-    // uploads by extension for browsers that don't always populate `type`.
-    const validTypes = ["application/pdf", "text/plain"];
+    // Support PDF, plain text, and common image formats. We also accept
+    // legacy uploads by extension for browsers that don't populate `type`.
+    const validTypes = [
+      "application/pdf",
+      "text/plain",
+      "image/png",
+      "image/jpeg",
+      "image/webp",
+      "image/gif",
+    ];
+    const validExtensions = [
+      ".txt",
+      ".pdf",
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".webp",
+      ".gif",
+    ];
     if (
       !validTypes.includes(file.type) &&
-      !file.name.endsWith(".txt") &&
-      !file.name.endsWith(".pdf")
+      !validExtensions.some((ext) => file.name.toLowerCase().endsWith(ext))
     ) {
-      toast.error("Please upload a PDF or TXT file.");
+      toast.error("Please upload a PDF, TXT, or image file.");
       return;
     }
 
@@ -86,11 +111,11 @@ export function DocumentUpload({ memberId }: { memberId: string }) {
       {/* Upload Zone */}
       <div className="relative border-2 border-dashed border-border/50 rounded-2xl p-6 bg-card/25 hover:bg-card/40 transition-colors duration-200 flex flex-col items-center justify-center text-center group">
         <input
-          type="file"
-          accept=".pdf,.txt"
-          onChange={handleFileUpload}
-          disabled={uploading}
+          accept=".pdf,.txt,.png,.jpg,.jpeg,.webp,.gif"
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+          disabled={uploading}
+          onChange={handleFileUpload}
+          type="file"
         />
         <div className="p-4 bg-primary/10 rounded-full text-primary group-hover:scale-110 transition-transform duration-300">
           {uploading ? (
@@ -104,17 +129,21 @@ export function DocumentUpload({ memberId }: { memberId: string }) {
             {uploading ? "Indexing Medical Report..." : "Upload Medical Record"}
           </p>
           <p className="text-xs text-muted-foreground max-w-xs">
-            {progress || "Drag and drop your PDF or TXT health report here, or click to browse."}
+            {progress ||
+              "Drag and drop your PDF, TXT, or image health report here, or click to browse."}
           </p>
           <p className="text-[10px] text-muted-foreground/80">
-            PDF or TXT up to 10MB. Chunks will be vectorized for instant AI diagnosis context.
+            PDF, TXT, or image up to 10MB. Chunks will be vectorized for instant
+            AI diagnosis context.
           </p>
         </div>
       </div>
 
       {/* Document List */}
       <div className="space-y-3">
-        <h4 className="text-sm font-semibold text-foreground">Uploaded Documents</h4>
+        <h4 className="text-sm font-semibold text-foreground">
+          Uploaded Documents
+        </h4>
         {error && (
           <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 p-3 rounded-lg">
             <AlertTriangleIcon className="size-4" />
@@ -138,8 +167,8 @@ export function DocumentUpload({ memberId }: { memberId: string }) {
           <div className="divide-y divide-border/30 border border-border/30 rounded-xl overflow-hidden bg-card/10">
             {documents.map((doc) => (
               <div
-                key={doc.id}
                 className="flex items-center justify-between p-3.5 hover:bg-card/30 transition-colors duration-150"
+                key={doc.id}
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="p-2 bg-primary/5 text-primary rounded-lg">
@@ -157,12 +186,17 @@ export function DocumentUpload({ memberId }: { memberId: string }) {
 
                 <div className="flex items-center gap-1.5">
                   <Button
+                    asChild
+                    className="size-7 text-muted-foreground hover:text-foreground"
                     size="icon"
                     variant="ghost"
-                    className="size-7 text-muted-foreground hover:text-foreground"
-                    asChild
                   >
-                    <a href={doc.url} target="_blank" rel="noopener noreferrer" title="View Document">
+                    <a
+                      href={`/api/documents/${doc.id}/file`}
+                      rel="noopener noreferrer"
+                      target="_blank"
+                      title="View Document"
+                    >
                       <ExternalLinkIcon className="size-3.5" />
                     </a>
                   </Button>

@@ -1,3 +1,4 @@
+import { google } from "@ai-sdk/google";
 import { geolocation, ipAddress } from "@vercel/functions";
 import {
   convertToModelMessages,
@@ -12,31 +13,33 @@ import { after } from "next/server";
 import { createResumableStreamContext } from "resumable-stream";
 import { auth, type UserType } from "@/app/(auth)/auth";
 import { entitlementsByUserType } from "@/lib/ai/entitlements";
-import { isRegularSession } from "@/lib/auth/guards";
+import {
+  fetchDocumentContext,
+  fetchHealthContext,
+} from "@/lib/ai/health-context";
+import { inlinePrivateFileParts } from "@/lib/ai/inline-private-files";
 import {
   allowedModelIds,
-  chatModels,
   DEFAULT_CHAT_MODEL,
   getCapabilities,
 } from "@/lib/ai/models";
-import { fetchHealthContext, fetchDocumentContext } from "@/lib/ai/health-context";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { getLanguageModel } from "@/lib/ai/providers";
-import { google } from "@ai-sdk/google";
-import { saveHealthMemory } from "@/lib/ai/tools/save-health-memory";
 import { requestHealthSuggestions } from "@/lib/ai/tools/request-health-suggestions";
+import { saveHealthMemory } from "@/lib/ai/tools/save-health-memory";
+import { isRegularSession } from "@/lib/auth/guards";
 import { isProductionEnvironment } from "@/lib/constants";
 import {
   createStreamId,
   deleteChatById,
   getChatById,
+  getFamilyMemberById,
   getMessageCountByUserId,
   getMessagesByChatId,
   saveChat,
   saveMessages,
   updateChatTitleById,
   updateMessage,
-  getFamilyMemberById,
 } from "@/lib/db/queries";
 import type { DBMessage } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
@@ -117,7 +120,8 @@ export async function POST(request: Request) {
     // the chat as having no member and skip health-tool registration. This
     // prevents the legacy "saveHealthMemory with memberId=''" code path that
     // used to fail with a silent FK violation and let the LLM lie about it.
-    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const UUID_RE =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const rawMemberId = memberId ?? chat?.memberId ?? undefined;
     const activeMemberId =
       rawMemberId && UUID_RE.test(rawMemberId) ? rawMemberId : undefined;
@@ -206,21 +210,37 @@ export async function POST(request: Request) {
 
     // Find the last user message to query the vector DB
     const lastUserMessage = uiMessages.findLast((m) => m.role === "user");
-    const lastUserMessageText = lastUserMessage?.parts
-      ?.filter((p) => typeof p === "object" && p !== null && "type" in p && p.type === "text" && "text" in p)
-      .map((p) => (p as { text: string }).text)
-      .join("") || "";
+    const lastUserMessageText =
+      lastUserMessage?.parts
+        ?.filter(
+          (p) =>
+            typeof p === "object" &&
+            p !== null &&
+            "type" in p &&
+            p.type === "text" &&
+            "text" in p
+        )
+        .map((p) => (p as { text: string }).text)
+        .join("") || "";
 
     // Fetch health context, document chunks, and member profile for the active family member
     const [healthContext, documentContext, activeMember] = await Promise.all([
       activeMemberId ? fetchHealthContext(activeMemberId) : undefined,
       activeMemberId && lastUserMessageText
-        ? fetchDocumentContext({ memberId: activeMemberId, query: lastUserMessageText })
+        ? fetchDocumentContext({
+            memberId: activeMemberId,
+            query: lastUserMessageText,
+          })
         : undefined,
       activeMemberId ? getFamilyMemberById({ id: activeMemberId }) : undefined,
     ]);
 
-    const modelMessages = await convertToModelMessages(uiMessages);
+    // Inline private-blob file parts (chat image attachments) into base64
+    // data URLs so the model receives the actual image bytes. The stored/UI
+    // messages keep the authed-route URL for browser previews; only the copy
+    // handed to the model is rewritten.
+    const modelInputMessages = await inlinePrivateFileParts(uiMessages);
+    const modelMessages = await convertToModelMessages(modelInputMessages);
 
     const stream = createUIMessageStream({
       originalMessages: isToolApprovalFlow ? uiMessages : undefined,

@@ -11,7 +11,11 @@ import { isRegularSession } from "@/lib/auth/guards";
 // and the Vercel upload worker), which is the entire reason chat input
 // uploads were broken before this rewrite.
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
-const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "application/pdf"] as const;
+const ALLOWED_MIME_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "application/pdf",
+] as const;
 
 const FileSchema = z.object({
   file: z
@@ -22,7 +26,7 @@ const FileSchema = z.object({
         typeof file === "object" &&
         "size" in file &&
         typeof (file as { size: unknown }).size === "number",
-      { message: "Invalid file object" },
+      { message: "Invalid file object" }
     )
     .refine((file) => (file as { size: number }).size > 0, {
       message: "Uploaded file is empty",
@@ -33,9 +37,9 @@ const FileSchema = z.object({
     .refine(
       (file) =>
         ALLOWED_MIME_TYPES.includes(
-          (file as { type: string }).type as (typeof ALLOWED_MIME_TYPES)[number],
+          (file as { type: string }).type as (typeof ALLOWED_MIME_TYPES)[number]
         ),
-      { message: "File type should be JPEG, PNG, or PDF" },
+      { message: "File type should be JPEG, PNG, or PDF" }
     ),
 });
 
@@ -56,7 +60,7 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json(
       { error: "Failed to parse multipart form data" },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
@@ -84,16 +88,27 @@ export async function POST(request: Request) {
   const fileBuffer = await fileObject.arrayBuffer();
 
   try {
+    // Private store: the blob is NOT publicly readable. The returned `url`
+    // can only be used via `get(pathname, { access: "private" })` server-side
+    // (see /api/files/download). We return `pathname` so the client can build
+    // authed preview URLs, and `url` for the chat route to inline into the
+    // model message.
     const data = await put(safeName, fileBuffer, {
-      access: "public",
+      access: "private",
+      addRandomSuffix: true,
+      contentType: fileObject.type || undefined,
     });
 
-    return NextResponse.json(data);
+    return NextResponse.json({
+      url: data.url,
+      pathname: data.pathname,
+      contentType: data.contentType,
+    });
   } catch (error) {
     console.error("Vercel Blob upload failed:", error);
     return NextResponse.json(
       { error: "Upload failed. Please try again." },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

@@ -197,14 +197,18 @@ export const stream = pgTable(
 
 export type Stream = InferSelectModel<typeof stream>;
 
-// Medical Documents: Uploaded scans/reports metadata (stored in Vercel Blob)
+// Medical Documents: Uploaded scans/reports metadata.
+// The raw file lives in Vercel Blob in a PRIVATE store; only its pathname is
+// persisted here. Reads go through the authenticated download route which
+// calls `get(pathname, { access: "private" })` server-side, so no public URL
+// to a medical file ever exists.
 export const medicalDocument = pgTable("MedicalDocument", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),
   memberId: uuid("memberId")
     .notNull()
     .references(() => familyMember.id, { onDelete: "cascade" }),
   fileName: text("fileName").notNull(),
-  url: text("url").notNull(), // Vercel Blob URL
+  blobPathname: text("blobPathname").notNull(),
   fileType: text("fileType").notNull(),
   uploadedAt: timestamp("uploadedAt").notNull().defaultNow(),
 });
