@@ -59,6 +59,81 @@ function getStreamContext() {
   }
 }
 
+type ModelMessages = Awaited<ReturnType<typeof convertToModelMessages>>;
+
+type FileContentPart = { type: "file"; data: string; mediaType: string };
+
+type ArrayContent = Extract<ModelMessages[number]["content"], unknown[]>;
+
+function isArrayContent(
+  content: ModelMessages[number]["content"]
+): content is ArrayContent {
+  return Array.isArray(content);
+}
+
+function normalizeFileDataUrlInContent(content: ArrayContent): ArrayContent {
+  return content.map((part) => {
+    if (
+      part.type !== "file" ||
+      typeof (part as { data?: unknown }).data !== "string" ||
+      !(part as { data: string }).data.startsWith("data:")
+    ) {
+      return part;
+    }
+
+    const data = (part as { data: string }).data;
+    const parsed = parseBase64DataUrl(data);
+    if (!parsed) {
+      return part;
+    }
+
+    const filePart = part as FileContentPart;
+
+    return {
+      ...filePart,
+      data: parsed.base64,
+      mediaType: parsed.mediaType || filePart.mediaType,
+    };
+  }) as ArrayContent;
+}
+
+async function toNormalizedModelMessages(
+  messages: Parameters<typeof inlinePrivateFileParts>[0]
+): Promise<ModelMessages> {
+  const modelMessages = (await convertToModelMessages(messages)) as ModelMessages;
+
+  const normalizedMessages: ModelMessages = [];
+
+  for (const message of modelMessages) {
+    if (!isArrayContent(message.content)) {
+      normalizedMessages.push(message);
+      continue;
+    }
+
+    const nextContent = normalizeFileDataUrlInContent(message.content);
+
+    normalizedMessages.push({
+      ...message,
+      content: nextContent,
+    } as ModelMessages[number]);
+  }
+
+  return normalizedMessages;
+}
+
+function parseBase64DataUrl(dataUrl: string) {
+  const match = /^data:([^;,]+);base64,(.+)$/s.exec(dataUrl);
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    mediaType: match[1],
+    base64: match[2],
+  };
+}
+
 export { getStreamContext };
 
 export async function POST(request: Request) {
@@ -240,7 +315,7 @@ export async function POST(request: Request) {
     // messages keep the authed-route URL for browser previews; only the copy
     // handed to the model is rewritten.
     const modelInputMessages = await inlinePrivateFileParts(uiMessages);
-    const modelMessages = await convertToModelMessages(modelInputMessages);
+    const modelMessages = await toNormalizedModelMessages(modelInputMessages);
 
     const stream = createUIMessageStream({
       originalMessages: isToolApprovalFlow ? uiMessages : undefined,
@@ -367,6 +442,12 @@ export async function POST(request: Request) {
           )
         ) {
           return "AI Gateway requires a valid credit card on file to service requests. Please visit https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dadd-credit-card to add a card and unlock your free credits.";
+        }
+        if (
+          error instanceof Error &&
+          /does not support image input/i.test(error.message)
+        ) {
+          return "The selected model doesn't support image input. Please switch to a vision-capable model (e.g. Gemini Flash) in the model picker to send images.";
         }
         return "Oops, an error occurred!";
       },
