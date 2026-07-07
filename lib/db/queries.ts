@@ -1158,6 +1158,12 @@ export async function getMedicationsByMemberId({
   }
 }
 
+type MedicationInsert = typeof medication.$inferInsert;
+type MedicationValues = Omit<
+  MedicationInsert,
+  "id" | "memberId" | "createdBy" | "createdAt" | "updatedAt"
+>;
+
 export async function createMedication({
   memberId,
   userId,
@@ -1165,7 +1171,7 @@ export async function createMedication({
 }: {
   memberId: string;
   userId: string;
-  values: typeof medication.$inferInsert;
+  values: MedicationValues;
 }) {
   if (!(await assertOwnsMember({ memberId, userId }))) {
     return null;
@@ -1368,6 +1374,9 @@ export async function getVitalsByMemberId({
   }
 }
 
+type VitalInsert = typeof vital.$inferInsert;
+type VitalValues = Omit<VitalInsert, "id" | "memberId" | "createdAt">;
+
 export async function createVital({
   memberId,
   userId,
@@ -1375,7 +1384,7 @@ export async function createVital({
 }: {
   memberId: string;
   userId: string;
-  values: typeof vital.$inferInsert;
+  values: VitalValues;
 }) {
   if (!(await assertOwnsMember({ memberId, userId }))) {
     return null;
