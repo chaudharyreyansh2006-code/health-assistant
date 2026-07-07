@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { AddMemberForm } from "./add-member-form";
 import { HealthMemories } from "@/components/chat/health-memories";
 import { DocumentUpload } from "@/components/chat/document-upload";
+import { TodayScreen } from "@/components/chat/today-screen";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -29,6 +30,7 @@ import {
   CalendarIcon,
   UserCheck2Icon,
   Trash2Icon,
+  SunIcon,
 } from "lucide-react";
 import { deleteFamilyAction, deleteFamilyMemberAction } from "@/app/(chat)/family/actions";
 import type { Family, FamilyMember } from "@/lib/db/schema";
@@ -44,7 +46,7 @@ export function FamilyWorkspaceClient({
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(
     initialMembers.length > 0 ? initialMembers[0].id : null
   );
-  const [activeTab, setActiveTab] = useState<"summary" | "documents">("summary");
+  const [activeTab, setActiveTab] = useState<"today" | "summary" | "documents">("today");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showDeleteMemberDialog, setShowDeleteMemberDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -244,6 +246,17 @@ export function FamilyWorkspaceClient({
                 {/* Tabs Selector */}
                 <div className="flex border-b border-border/30">
                   <button
+                    onClick={() => setActiveTab("today")}
+                    className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold border-b-2 -mb-[2px] transition-colors duration-150 ${
+                      activeTab === "today"
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <SunIcon className="size-4" />
+                    Today
+                  </button>
+                  <button
                     onClick={() => setActiveTab("summary")}
                     className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold border-b-2 -mb-[2px] transition-colors duration-150 ${
                       activeTab === "summary"
@@ -269,7 +282,9 @@ export function FamilyWorkspaceClient({
 
                 {/* Tab Content */}
                 <div className="pt-2">
-                  {activeTab === "summary" ? (
+                  {activeTab === "today" ? (
+                    <TodayScreen memberId={selectedMember.id} />
+                  ) : activeTab === "summary" ? (
                     <HealthMemories memberId={selectedMember.id} />
                   ) : (
                     <DocumentUpload memberId={selectedMember.id} />

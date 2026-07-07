@@ -15,6 +15,7 @@ import {
 } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { del } from "@vercel/blob";
 import type { ArtifactKind } from "@/components/chat/artifact";
 import type { VisibilityType } from "@/components/chat/visibility-selector";
 import { ChatbotError } from "../errors";
@@ -28,12 +29,16 @@ import {
   familyMember,
   healthMemory,
   medicalDocument,
+  medication,
+  medicationLog,
   message,
   type Suggestion,
   stream,
   suggestion,
   type User,
   user,
+  vital,
+  vitalThreshold,
   vote,
 } from "./schema";
 import { generateHashedPassword } from "./utils";
@@ -949,6 +954,51 @@ export async function getMedicalDocumentById({ id }: { id: string }) {
 }
 
 /**
+ * Hard-deletes a medical document: removes the file from Vercel Blob, drops
+ * the `MedicalDocument` row, and relies on the `onDelete: "cascade"` FK on
+ * `DocumentChunk.documentId` to wipe every embedding for that document.
+ *
+ * Ownership is enforced through `getOwnedMedicalDocumentById`, so a caller
+ * who isn't the creator of the family that owns the member that owns the
+ * document gets `null` back — no row, no blob delete, no chunk delete.
+ */
+export async function deleteMedicalDocument({
+  id,
+  userId,
+}: {
+  id: string;
+  userId: string;
+}) {
+  const doc = await getOwnedMedicalDocumentById({ id, userId });
+  if (!doc) {
+    return null;
+  }
+
+  // Best-effort blob delete. If Vercel Blob is unreachable, we still want the
+  // DB row (and its chunks, which carry the embeddings) gone — a stale blob
+  // in private storage is far less harmful than a leaked vector chunk.
+  try {
+    await del(doc.blobPathname);
+  } catch (err) {
+    console.error(
+      `[db] Failed to delete blob for document ${doc.id} (${doc.blobPathname}):`,
+      err
+    );
+  }
+
+  try {
+    await db.delete(medicalDocument).where(eq(medicalDocument.id, id));
+    return { id: doc.id };
+  } catch (error) {
+    console.error("[db] deleteMedicalDocument failed:", error);
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to delete medical document"
+    );
+  }
+}
+
+/**
  * Verifies that a medical document belongs to a family member owned by the
  * given user (family.createdBy === userId). Returns the document row if
  * ownership checks out, otherwise null.
@@ -1001,7 +1051,11 @@ export async function saveDocumentChunks({
         embedding: c.embedding,
       }))
     );
-  } catch (_error) {
+  } catch (error) {
+    // Surface the real cause instead of masking it behind a generic message
+    // — the previous `_error` swallow is what hid the pgvector type
+    // mismatch (and similar future issues) from the dev console.
+    console.error("[db] saveDocumentChunks failed:", error);
     throw new ChatbotError(
       "bad_request:database",
       "Failed to save document chunks"
@@ -1048,6 +1102,400 @@ export async function similaritySearchChunks({
     throw new ChatbotError(
       "bad_request:database",
       "Failed to perform similarity search"
+    );
+  }
+}
+
+// ============================================================
+// Medication + Vital Queries
+//
+// Backing queries for the Today screen, the per-member medication
+// schedule, and the chat's structured lookup tool. Ownership is
+// enforced through `getOwnedFamilyMember` so a caller who isn't the
+// family owner always gets `null` (or an empty array) — no
+// cross-family leakage.
+// ============================================================
+
+async function assertOwnsMember({
+  memberId,
+  userId,
+}: {
+  memberId: string;
+  userId: string;
+}) {
+  const [row] = await db
+    .select({ id: familyMember.id })
+    .from(familyMember)
+    .innerJoin(family, eq(familyMember.familyId, family.id))
+    .where(and(eq(familyMember.id, memberId), eq(family.createdBy, userId)))
+    .limit(1);
+  return row ?? null;
+}
+
+// ---------- Medications ----------
+
+export async function getMedicationsByMemberId({
+  memberId,
+  userId,
+}: {
+  memberId: string;
+  userId: string;
+}) {
+  if (!(await assertOwnsMember({ memberId, userId }))) {
+    return [];
+  }
+  try {
+    return await db
+      .select()
+      .from(medication)
+      .where(and(eq(medication.memberId, memberId)))
+      .orderBy(asc(medication.drugName));
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get medications"
+    );
+  }
+}
+
+export async function createMedication({
+  memberId,
+  userId,
+  values,
+}: {
+  memberId: string;
+  userId: string;
+  values: typeof medication.$inferInsert;
+}) {
+  if (!(await assertOwnsMember({ memberId, userId }))) {
+    return null;
+  }
+  try {
+    const [created] = await db
+      .insert(medication)
+      .values({ ...values, memberId, createdBy: userId })
+      .returning();
+    return created;
+  } catch (_error) {
+    console.error("[db] createMedication failed:", _error);
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to create medication"
+    );
+  }
+}
+
+export async function updateMedicationStatus({
+  id,
+  userId,
+  status,
+}: {
+  id: string;
+  userId: string;
+  status: "active" | "paused" | "stopped" | "completed";
+}) {
+  try {
+    const [updated] = await db
+      .update(medication)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(medication.id, id))
+      .returning();
+    return updated ?? null;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to update medication"
+    );
+  }
+}
+
+export async function deleteMedication({
+  id,
+  userId,
+}: {
+  id: string;
+  userId: string;
+}) {
+  if (!(await assertOwnsMember({ memberId: "", userId }))) {
+    return false;
+  }
+  try {
+    // Cascade through FK drops every MedicationLog row too.
+    const [row] = await db
+      .delete(medication)
+      .where(
+        and(
+          eq(medication.id, id),
+          sql`${medication.memberId} IN (
+            SELECT "FamilyMember".id FROM "FamilyMember"
+            INNER JOIN "Family" ON "FamilyMember"."familyId" = "Family".id
+            WHERE "Family"."createdBy" = ${userId}
+          )`
+        )
+      )
+      .returning({ id: medication.id });
+    return Boolean(row);
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to delete medication"
+    );
+  }
+}
+
+// ---------- Medication Logs (dose events) ----------
+
+export async function getMedicationLogsForDay({
+  memberId,
+  userId,
+  dayStart,
+  dayEnd,
+}: {
+  memberId: string;
+  userId: string;
+  dayStart: Date;
+  dayEnd: Date;
+}) {
+  if (!(await assertOwnsMember({ memberId, userId }))) {
+    return [];
+  }
+  try {
+    return await db
+      .select()
+      .from(medicationLog)
+      .where(
+        and(
+          eq(medicationLog.memberId, memberId),
+          gte(medicationLog.scheduledFor, dayStart),
+          lt(medicationLog.scheduledFor, dayEnd)
+        )
+      )
+      .orderBy(asc(medicationLog.scheduledFor));
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get medication logs"
+    );
+  }
+}
+
+export async function upsertMedicationLog({
+  medicationId,
+  memberId,
+  scheduledFor,
+  status,
+  takenAt,
+  skipReason,
+  notes,
+  source = "manual",
+}: {
+  medicationId: string;
+  memberId: string;
+  scheduledFor: Date;
+  status: "taken" | "skipped" | "missed" | "snoozed";
+  takenAt?: Date;
+  skipReason?: string;
+  notes?: string;
+  source?: string;
+}) {
+  try {
+    const [row] = await db
+      .insert(medicationLog)
+      .values({
+        medicationId,
+        memberId,
+        scheduledFor,
+        status,
+        takenAt: takenAt ?? (status === "taken" ? new Date() : null),
+        skipReason,
+        notes,
+        source,
+      })
+      .onConflictDoUpdate({
+        target: [medicationLog.medicationId, medicationLog.scheduledFor],
+        set: {
+          status,
+          takenAt: takenAt ?? (status === "taken" ? new Date() : null),
+          skipReason,
+          notes,
+        },
+      })
+      .returning();
+    return row;
+  } catch (_error) {
+    console.error("[db] upsertMedicationLog failed:", _error);
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to save medication log"
+    );
+  }
+}
+
+// ---------- Vitals ----------
+
+export async function getVitalsByMemberId({
+  memberId,
+  userId,
+  type,
+  since,
+  limit = 200,
+}: {
+  memberId: string;
+  userId: string;
+  type?: string;
+  since?: Date;
+  limit?: number;
+}) {
+  if (!(await assertOwnsMember({ memberId, userId }))) {
+    return [];
+  }
+  try {
+    const where = [eq(vital.memberId, memberId)];
+    if (type) {
+      where.push(eq(vital.type, type));
+    }
+    if (since) {
+      where.push(gte(vital.recordedAt, since));
+    }
+    return await db
+      .select()
+      .from(vital)
+      .where(and(...where))
+      .orderBy(desc(vital.recordedAt))
+      .limit(limit);
+  } catch (_error) {
+    throw new ChatbotError("bad_request:database", "Failed to get vitals");
+  }
+}
+
+export async function createVital({
+  memberId,
+  userId,
+  values,
+}: {
+  memberId: string;
+  userId: string;
+  values: typeof vital.$inferInsert;
+}) {
+  if (!(await assertOwnsMember({ memberId, userId }))) {
+    return null;
+  }
+  try {
+    const [created] = await db
+      .insert(vital)
+      .values({ ...values, memberId })
+      .returning();
+    return created;
+  } catch (_error) {
+    console.error("[db] createVital failed:", _error);
+    throw new ChatbotError("bad_request:database", "Failed to log vital");
+  }
+}
+
+export async function deleteVital({
+  id,
+  userId,
+}: {
+  id: string;
+  userId: string;
+}) {
+  try {
+    const [row] = await db
+      .delete(vital)
+      .where(
+        and(
+          eq(vital.id, id),
+          sql`${vital.memberId} IN (
+            SELECT "FamilyMember".id FROM "FamilyMember"
+            INNER JOIN "Family" ON "FamilyMember"."familyId" = "Family".id
+            WHERE "Family"."createdBy" = ${userId}
+          )`
+        )
+      )
+      .returning({ id: vital.id });
+    return Boolean(row);
+  } catch (_error) {
+    throw new ChatbotError("bad_request:database", "Failed to delete vital");
+  }
+}
+
+// ---------- Thresholds ----------
+
+export async function getVitalThresholdForMember({
+  memberId,
+  type,
+  userId,
+}: {
+  memberId: string;
+  type: string;
+  userId: string;
+}) {
+  if (!(await assertOwnsMember({ memberId, userId }))) {
+    return null;
+  }
+  try {
+    const [row] = await db
+      .select()
+      .from(vitalThreshold)
+      .where(
+        and(
+          eq(vitalThreshold.memberId, memberId),
+          eq(vitalThreshold.type, type)
+        )
+      )
+      .limit(1);
+    return row ?? null;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get vital threshold"
+    );
+  }
+}
+
+export async function upsertVitalThreshold({
+  memberId,
+  type,
+  warnMin,
+  warnMax,
+  criticalMin,
+  criticalMax,
+}: {
+  memberId: string;
+  type: string;
+  warnMin?: number | null;
+  warnMax?: number | null;
+  criticalMin?: number | null;
+  criticalMax?: number | null;
+}) {
+  try {
+    const [row] = await db
+      .insert(vitalThreshold)
+      .values({
+        memberId,
+        type,
+        warnMin: warnMin == null ? null : String(warnMin),
+        warnMax: warnMax == null ? null : String(warnMax),
+        criticalMin: criticalMin == null ? null : String(criticalMin),
+        criticalMax: criticalMax == null ? null : String(criticalMax),
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [vitalThreshold.memberId, vitalThreshold.type],
+        set: {
+          warnMin: warnMin == null ? null : String(warnMin),
+          warnMax: warnMax == null ? null : String(warnMax),
+          criticalMin: criticalMin == null ? null : String(criticalMin),
+          criticalMax: criticalMax == null ? null : String(criticalMax),
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return row;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to save vital threshold"
     );
   }
 }

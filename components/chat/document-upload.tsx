@@ -5,11 +5,22 @@ import {
   ExternalLinkIcon,
   FileTextIcon,
   Loader2Icon,
+  Trash2Icon,
   UploadCloudIcon,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { fetcher } from "@/lib/utils";
 
@@ -27,6 +38,10 @@ type ListedMedicalDocument = {
 export function DocumentUpload({ memberId }: { memberId: string }) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<ListedMedicalDocument | null>(
+    null
+  );
 
   const {
     data: documents,
@@ -103,6 +118,38 @@ export function DocumentUpload({ memberId }: { memberId: string }) {
       setProgress(null);
       // Clear input
       e.target.value = "";
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    const target = pendingDelete;
+    if (!target) {
+      return;
+    }
+
+    setDeleting(target.id);
+    try {
+      const response = await fetch(`/api/documents/${target.id}`, {
+        method: "DELETE",
+      });
+
+      if (response.status === 404) {
+        throw new Error("Document not found or already removed.");
+      }
+      if (!response.ok) {
+        const result = await response
+          .json()
+          .catch(() => ({ error: "Failed to delete document" }));
+        throw new Error(result.error || "Failed to delete document");
+      }
+
+      toast.success("Document and its embeddings were removed.");
+      mutate();
+    } catch (err: any) {
+      toast.error(err.message || "An error occurred while deleting");
+    } finally {
+      setDeleting(null);
+      setPendingDelete(null);
     }
   };
 
@@ -200,12 +247,65 @@ export function DocumentUpload({ memberId }: { memberId: string }) {
                       <ExternalLinkIcon className="size-3.5" />
                     </a>
                   </Button>
+                  <Button
+                    aria-label={`Delete ${doc.fileName}`}
+                    className="size-7 text-muted-foreground hover:text-destructive"
+                    disabled={deleting === doc.id}
+                    onClick={() => setPendingDelete(doc)}
+                    size="icon"
+                    title="Delete document and its embeddings"
+                    variant="ghost"
+                  >
+                    {deleting === doc.id ? (
+                      <Loader2Icon className="size-3.5 animate-spin" />
+                    ) : (
+                      <Trash2Icon className="size-3.5" />
+                    )}
+                  </Button>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDelete(null);
+          }
+        }}
+        open={pendingDelete !== null}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this medical record?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove{" "}
+              <span className="font-semibold text-foreground">
+                {pendingDelete?.fileName}
+              </span>{" "}
+              from your private storage, drop the document row, and wipe every
+              vector embedding generated from it. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting !== null}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleting !== null}
+              onClick={(event) => {
+                event.preventDefault();
+                handleConfirmDelete();
+              }}
+            >
+              {deleting !== null ? "Deleting..." : "Delete record"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
