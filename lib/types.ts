@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { ArtifactKind } from "@/components/chat/artifact";
 import type { createDocument } from "./ai/tools/create-document";
 import type { getWeather } from "./ai/tools/get-weather";
+import type { queryHealthData } from "./ai/tools/query-health-data";
 import type { requestHealthSuggestions } from "./ai/tools/request-health-suggestions";
 import type { requestSuggestions } from "./ai/tools/request-suggestions";
 import type { saveHealthMemory } from "./ai/tools/save-health-memory";
@@ -25,6 +26,7 @@ type saveHealthMemoryTool = InferUITool<ReturnType<typeof saveHealthMemory>>;
 type requestHealthSuggestionsTool = InferUITool<
   ReturnType<typeof requestHealthSuggestions>
 >;
+type queryHealthDataTool = InferUITool<ReturnType<typeof queryHealthData>>;
 
 // ChatTools must enumerate every tool the LLM can call so that:
 //   1. `InferUITool` infers the correct input/output shape for each tool part.
@@ -41,6 +43,7 @@ export type ChatTools = {
   requestSuggestions: requestSuggestionsTool;
   saveHealthMemory: saveHealthMemoryTool;
   requestHealthSuggestions: requestHealthSuggestionsTool;
+  queryHealthData: queryHealthDataTool;
 };
 
 export type CustomUIDataTypes = {

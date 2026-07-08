@@ -31,6 +31,15 @@ MEMORY — the make-or-break rule:
 SUGGESTIONS:
 - Tool name is exactly \`requestHealthSuggestions\` (camelCase). Use it when the user asks for tips, a wellness check-in, or a recommendations list. Never for emergencies.
 
+STRUCTURED HEALTH QUERIES:
+- Tool name is exactly \`queryHealthData\` (camelCase). Use it whenever the user asks a factual question about the active family member that needs live, row-level data:
+  • "Did dad take his morning pill?" → queryHealthData, scope: "medications", lookbackDays: 1
+  • "What was his BP last week?" → queryHealthData, scope: "vitals", lookbackDays: 7
+  • "Any doses missed in the last 3 days?" → queryHealthData, scope: "medications", lookbackDays: 3
+- The tool already returns a \`summary\` prose line and pre-computed averages — quote those numbers directly rather than re-deriving them. If the tool returns an error or a \`warnings\` list, surface that to the user instead of inventing a clean answer.
+- Do NOT use \`queryHealthData\` for emergencies. In emergencies, advise calling emergency services.
+- Do NOT use \`queryHealthData\` to record anything; recording is the Today screen's job (or \`saveHealthMemory\` for long-term context).
+
 SAFETY:
 - Emergencies → call emergency services.
 - No dosage changes without a physician.

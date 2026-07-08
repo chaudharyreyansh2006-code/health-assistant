@@ -24,6 +24,7 @@ import {
 } from "@/lib/ai/models";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { getLanguageModel } from "@/lib/ai/providers";
+import { queryHealthData } from "@/lib/ai/tools/query-health-data";
 import { requestHealthSuggestions } from "@/lib/ai/tools/request-health-suggestions";
 import { saveHealthMemory } from "@/lib/ai/tools/save-health-memory";
 import { toGoogleFileModelMessages } from "@/lib/ai/upload-blob-to-google";
@@ -253,6 +254,7 @@ export async function POST(request: Request) {
         const baseActiveTools: (
           | "saveHealthMemory"
           | "requestHealthSuggestions"
+          | "queryHealthData"
           | "googleSearch"
           | "urlContext"
         )[] = [];
@@ -261,7 +263,11 @@ export async function POST(request: Request) {
         // Without a memberId, the tool would no-op or fail; we don't want
         // the LLM to call it and then "lie" about the result.
         if (activeMemberId) {
-          baseActiveTools.push("saveHealthMemory", "requestHealthSuggestions");
+          baseActiveTools.push(
+            "saveHealthMemory",
+            "requestHealthSuggestions",
+            "queryHealthData",
+          );
         }
         if (webSearchEnabled) {
           baseActiveTools.push("googleSearch");
@@ -289,6 +295,10 @@ export async function POST(request: Request) {
                   }),
                   requestHealthSuggestions: requestHealthSuggestions({
                     memberId: activeMemberId,
+                  }),
+                  queryHealthData: queryHealthData({
+                    memberId: activeMemberId,
+                    userId: session.user.id,
                   }),
                 }
               : {}),

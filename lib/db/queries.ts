@@ -1222,11 +1222,12 @@ export async function deleteMedication({
   id: string;
   userId: string;
 }) {
-  if (!(await assertOwnsMember({ memberId: "", userId }))) {
-    return false;
-  }
   try {
-    // Cascade through FK drops every MedicationLog row too.
+    // Cascade through FK drops every MedicationLog row too. We verify
+    // ownership by joining through the member → family → createdBy chain
+    // in the WHERE clause (the previous version of this function passed
+    // `memberId: ""` to `assertOwnsMember`, which always returned null and
+    // turned every delete into a silent 404).
     const [row] = await db
       .delete(medication)
       .where(
@@ -1333,6 +1334,46 @@ export async function upsertMedicationLog({
     throw new ChatbotError(
       "bad_request:database",
       "Failed to save medication log"
+    );
+  }
+}
+
+/**
+ * Hard-deletes a single dose event. Used by the "Undo" affordance on the
+ * Today screen when a user taps Take / Skip by mistake. Ownership is
+ * checked by joining through `Medication.memberId → FamilyMember →
+ * Family.createdBy` so a caller who isn't the family owner gets `false`
+ * back, no row touched.
+ *
+ * Idempotent — calling it twice for the same id returns `false` the second
+ * time, which the route maps to 404 (the row is already gone).
+ */
+export async function deleteMedicationLog({
+  id,
+  userId,
+}: {
+  id: string;
+  userId: string;
+}) {
+  try {
+    const [row] = await db
+      .delete(medicationLog)
+      .where(
+        and(
+          eq(medicationLog.id, id),
+          sql`${medicationLog.memberId} IN (
+            SELECT "FamilyMember".id FROM "FamilyMember"
+            INNER JOIN "Family" ON "FamilyMember"."familyId" = "Family".id
+            WHERE "Family"."createdBy" = ${userId}
+          )`
+        )
+      )
+      .returning({ id: medicationLog.id });
+    return Boolean(row);
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to delete medication log"
     );
   }
 }

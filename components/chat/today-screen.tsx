@@ -5,27 +5,48 @@ import { toast } from "sonner";
 import useSWR from "swr";
 import {
   CheckIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   CircleDashedIcon,
   ClockIcon,
+  MoreHorizontalIcon,
+  PauseIcon,
   PillIcon,
+  PlayIcon,
   PlusIcon,
+  SearchIcon,
   SirenIcon,
   StethoscopeIcon,
   TrendingDownIcon,
   TrendingUpIcon,
+  Undo2Icon,
   XIcon,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
 import { fetcher } from "@/lib/utils";
-import { AddMedicationDialog } from "./add-medication-dialog";
+import {
+  CommandPalette,
+  useCommandPaletteShortcut,
+  type PaletteAction,
+} from "./command-palette";
+import { AddMedicationDialog, type AddMedicationValues } from "./add-medication-dialog";
 import { LogVitalDialog } from "@/components/chat/log-vital-dialog";
 
 // ---------- Types (mirror the API shapes) ----------
@@ -127,6 +148,16 @@ export function TodayScreen({ memberId }: { memberId: string }) {
 
   const [addMedOpen, setAddMedOpen] = useState(false);
   const [logVitalType, setLogVitalType] = useState<Vital["type"] | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [inactiveOpen, setInactiveOpen] = useState(false);
+  const [medToDelete, setMedToDelete] = useState<Medication | null>(null);
+
+  useCommandPaletteShortcut(setPaletteOpen);
+
+  const activeMedications = medications.filter((m) => m.status === "active");
+  const inactiveMedications = medications.filter(
+    (m) => m.status !== "active"
+  );
 
   // Project every scheduled dose for today from the active medication list.
   const scheduled = buildScheduledDoses(medications ?? [], todayLogs ?? []);
@@ -193,24 +224,24 @@ export function TodayScreen({ memberId }: { memberId: string }) {
     }
   };
 
-  const handleAddMedication = async (values: {
-    drugName: string;
-    doseValue: number;
-    doseUnit: string;
-    scheduleTimes: string[];
-    withFood: "before" | "after" | "with" | "any";
-  }) => {
+  const handleAddMedication = async (values: AddMedicationValues) => {
     try {
       const res = await fetch("/api/health/medications", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           memberId,
-          ...values,
+          drugName: values.drugName,
+          brandName: values.brandName ?? undefined,
+          doseValue: values.doseValue,
+          doseUnit: values.doseUnit,
           frequency:
             values.scheduleTimes.length > 1
               ? `${values.scheduleTimes.length}-times-daily`
               : "once-daily",
+          scheduleTimes: values.scheduleTimes,
+          withFood: values.withFood,
+          notes: values.notes ?? undefined,
         }),
       });
       if (!res.ok) {
@@ -223,6 +254,152 @@ export function TodayScreen({ memberId }: { memberId: string }) {
       toast.error(err.message || "Could not add medication");
     }
   };
+
+  // Status flip (pause / resume / stop / complete) — reversible, no confirm.
+  const handleMedStatus = async (
+    med: Medication,
+    status: Medication["status"]
+  ) => {
+    try {
+      const res = await fetch(`/api/health/medications/${med.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        throw new Error("Could not update medication");
+      }
+      refetchMeds();
+      const label =
+        status === "paused"
+          ? "Paused."
+          : status === "stopped"
+            ? "Marked as stopped."
+            : status === "completed"
+              ? "Marked as completed."
+              : "Resumed.";
+      toast.success(label);
+    } catch (err: any) {
+      toast.error(err.message || "Could not update medication");
+    }
+  };
+
+  // Hard delete — confirmed via AlertDialog before this fires.
+  const handleDeleteMed = async (med: Medication) => {
+    try {
+      const res = await fetch(`/api/health/medications/${med.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        throw new Error("Could not delete medication");
+      }
+      refetchMeds();
+      toast.success("Medication removed.");
+    } catch (err: any) {
+      toast.error(err.message || "Could not delete medication");
+    } finally {
+      setMedToDelete(null);
+    }
+  };
+
+  // Undo a wrong dose event. Deletes the MedicationLog row so the dose
+  // returns to "due" state. No confirm — single-row delete, easy to re-tap.
+  const handleUndoLog = async (logId: string) => {
+    try {
+      const res = await fetch(`/api/health/medication-logs/${logId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        throw new Error("Could not undo");
+      }
+      refetchLogs();
+    } catch (err: any) {
+      toast.error(err.message || "Could not undo");
+    }
+  };
+
+  // ---- Command palette actions (built per render so they reflect live state) ----
+  const paletteActions: PaletteAction[] = [
+    {
+      id: "log-bp",
+      group: "Log a reading",
+      label: "Log blood pressure",
+      hint: "systolic / diastolic / pulse",
+      keywords: ["bp", "blood", "pressure", "hypertension"],
+      onSelect: () => setLogVitalType("bp"),
+    },
+    {
+      id: "log-glucose",
+      group: "Log a reading",
+      label: "Log glucose",
+      hint: "fasting / post-meal / random",
+      keywords: ["sugar", "diabetes", "glucose"],
+      onSelect: () => setLogVitalType("glucose"),
+    },
+    {
+      id: "log-weight",
+      group: "Log a reading",
+      label: "Log weight",
+      keywords: ["weight", "kg", "mass"],
+      onSelect: () => setLogVitalType("weight"),
+    },
+    {
+      id: "log-spo2",
+      group: "Log a reading",
+      label: "Log SpO₂",
+      hint: "oxygen saturation",
+      keywords: ["spo2", "oxygen", "saturation", "pulse ox"],
+      onSelect: () => setLogVitalType("spo2"),
+    },
+    {
+      id: "log-hr",
+      group: "Log a reading",
+      label: "Log heart rate",
+      keywords: ["heart", "pulse", "bpm", "hr"],
+      onSelect: () => setLogVitalType("hr"),
+    },
+    {
+      id: "log-temp",
+      group: "Log a reading",
+      label: "Log temperature",
+      keywords: ["temp", "fever", "temperature"],
+      onSelect: () => setLogVitalType("temp"),
+    },
+    {
+      id: "log-sleep",
+      group: "Log a reading",
+      label: "Log sleep",
+      keywords: ["sleep", "hours"],
+      onSelect: () => setLogVitalType("sleep"),
+    },
+    {
+      id: "add-medication",
+      group: "Schedule",
+      label: "Add a medication",
+      hint: "type the prescription in your own words",
+      keywords: ["med", "medication", "pill", "prescription", "drug"],
+      onSelect: () => setAddMedOpen(true),
+    },
+    ...(dueNow.length > 0
+      ? [
+          {
+            id: "mark-taken",
+            group: "Schedule",
+            label: `Mark next dose taken · ${dueNow[0].drugName}`,
+            hint: fmtTime(dueNow[0].scheduledFor),
+            keywords: ["taken", "dose", "pill"],
+            onSelect: () => handleDose(dueNow[0], "taken"),
+          },
+          {
+            id: "mark-skipped",
+            group: "Schedule",
+            label: `Mark next dose skipped · ${dueNow[0].drugName}`,
+            keywords: ["skip", "skipped", "dose"],
+            onSelect: () => handleDose(dueNow[0], "skipped"),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <div className="flex flex-col gap-8">
@@ -247,8 +424,11 @@ export function TodayScreen({ memberId }: { memberId: string }) {
             <DoseRow
               key={`${dose.medicationId}-${dose.scheduledFor.toISOString()}`}
               dose={dose}
-              onTake={() => handleDose(dose, "taken")}
               onSkip={() => handleDose(dose, "skipped")}
+              onTake={() => handleDose(dose, "taken")}
+              onUndo={
+                dose.logId ? () => handleUndoLog(dose.logId!) : undefined
+              }
             />
           ))
         )}
@@ -268,50 +448,116 @@ export function TodayScreen({ memberId }: { memberId: string }) {
         )}
       </Section>
 
+      {/* PRESCRIPTIONS — every active medication, tap to manage */}
+      <Section
+        label="Prescriptions"
+        icon={<PillIcon className="size-3.5" />}
+      >
+        {activeMedications.length === 0 ? (
+          <Empty>
+            No active prescriptions. Add one from the menu or ⌘K.
+          </Empty>
+        ) : (
+          activeMedications.map((med) => (
+            <PrescriptionRow
+              key={med.id}
+              med={med}
+              onChangeStatus={(status) => handleMedStatus(med, status)}
+              onDelete={() => setMedToDelete(med)}
+            />
+          ))
+        )}
+      </Section>
+
       {/* LAST 7 DAYS */}
       <Section label="Last 7 days" icon={<StethoscopeIcon className="size-3.5" />}>
         <VitalSummary vitals={vitals ?? []} onLog={(type) => setLogVitalType(type)} />
       </Section>
 
-      {/* Floating + button */}
-      <div className="sticky bottom-2 mt-2 flex justify-end">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button className="rounded-full px-4" size="sm">
-              <PlusIcon className="size-3.5" />
-              Log or add
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-              Log a reading
-            </DropdownMenuLabel>
-            <DropdownMenuItem onSelect={() => setLogVitalType("bp")}>
-              <StethoscopeIcon className="size-3.5" />
-              Blood pressure
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setLogVitalType("glucose")}>
-              <StethoscopeIcon className="size-3.5" />
-              Glucose
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setLogVitalType("weight")}>
-              <StethoscopeIcon className="size-3.5" />
-              Weight
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setLogVitalType("spo2")}>
-              <StethoscopeIcon className="size-3.5" />
-              SpO₂
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-              Schedule
-            </DropdownMenuLabel>
-            <DropdownMenuItem onSelect={() => setAddMedOpen(true)}>
-              <PillIcon className="size-3.5" />
-              Add a medication
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      {/* INACTIVE — paused / stopped / completed, collapsed by default */}
+      {inactiveMedications.length > 0 ? (
+        <section className="flex flex-col gap-3">
+          <button
+            className="flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
+            onClick={() => setInactiveOpen((o) => !o)}
+            type="button"
+          >
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em]">
+              {inactiveOpen ? "Hide" : "Show"}{" "}
+              {inactiveMedications.length} inactive prescription
+              {inactiveMedications.length === 1 ? "" : "s"}
+            </span>
+            <span className="h-px flex-1 bg-border" />
+            <span className="opacity-60">
+              {inactiveOpen ? (
+                <ChevronUpIcon className="size-3" />
+              ) : (
+                <ChevronDownIcon className="size-3" />
+              )}
+            </span>
+          </button>
+          {inactiveOpen ? (
+            <div className="flex flex-col">
+              {inactiveMedications.map((med) => (
+                <PrescriptionRow
+                  key={med.id}
+                  med={med}
+                  onChangeStatus={(status) => handleMedStatus(med, status)}
+                  onDelete={() => setMedToDelete(med)}
+                />
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {/* Delete medication confirmation */}
+      <AlertDialog
+        onOpenChange={(o) => !o && setMedToDelete(null)}
+        open={medToDelete !== null}
+      >
+        <AlertDialogContent className="max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this medication?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {medToDelete
+                ? `${medToDelete.drugName} ${medToDelete.doseValue} ${medToDelete.doseUnit} will be removed along with every dose log on record. This cannot be undone.`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => medToDelete && handleDeleteMed(medToDelete)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Floating + button + Command-K hint */}
+      <div className="sticky bottom-2 mt-2 flex items-center justify-between gap-3">
+        <button
+          className="inline-flex items-center gap-2 rounded-full border border-border bg-background/80 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
+          onClick={() => setPaletteOpen(true)}
+          type="button"
+        >
+          <SearchIcon className="size-3" />
+          Quick log
+          <kbd className="ml-1 rounded border border-border bg-muted/40 px-1 py-0.5 font-mono text-[10px]">
+            ⌘K
+          </kbd>
+        </button>
+        <Button
+          className="rounded-full px-4"
+          onClick={() => setPaletteOpen(true)}
+          size="sm"
+        >
+          <PlusIcon className="size-3.5" />
+          Log or add
+        </Button>
       </div>
 
       <AddMedicationDialog
@@ -326,6 +572,13 @@ export function TodayScreen({ memberId }: { memberId: string }) {
         onSubmit={handleAddVital}
         open={logVitalType !== null}
         type={logVitalType}
+      />
+
+      <CommandPalette
+        actions={paletteActions}
+        onOpenChange={setPaletteOpen}
+        open={paletteOpen}
+        placeholder="Log a reading, schedule a med, or mark a dose…"
       />
     </div>
   );
@@ -368,6 +621,7 @@ type ScheduledDose = {
   withFood: Medication["withFood"];
   scheduledFor: Date;
   logStatus: DoseStatus | null;
+  logId: string | null;
 };
 
 function buildScheduledDoses(
@@ -396,6 +650,7 @@ function buildScheduledDoses(
         withFood: med.withFood,
         scheduledFor,
         logStatus: log?.status ?? null,
+        logId: log?.id ?? null,
       });
     }
   }
@@ -407,10 +662,12 @@ function DoseRow({
   dose,
   onTake,
   onSkip,
+  onUndo,
 }: {
   dose: ScheduledDose;
   onTake: () => void;
   onSkip: () => void;
+  onUndo?: () => void;
 }) {
   const isPast = dose.scheduledFor.getTime() < Date.now() - DUE_WINDOW_MS;
   const taken = dose.logStatus === "taken";
@@ -437,12 +694,32 @@ function DoseRow({
         </span>
       </span>
       {taken ? (
-        <span className="inline-flex items-center gap-1 text-xs text-emerald-600">
+        <span className="inline-flex items-center gap-2 text-xs text-emerald-600">
           <CheckIcon className="size-3" /> taken
+          {onUndo ? (
+            <button
+              aria-label="Undo taken"
+              className="inline-flex items-center gap-1 rounded text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+              onClick={onUndo}
+              type="button"
+            >
+              <Undo2Icon className="size-3" />
+            </button>
+          ) : null}
         </span>
       ) : skipped ? (
-        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
           <XIcon className="size-3" /> skipped
+          {onUndo ? (
+            <button
+              aria-label="Undo skipped"
+              className="inline-flex items-center gap-1 rounded text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+              onClick={onUndo}
+              type="button"
+            >
+              <Undo2Icon className="size-3" />
+            </button>
+          ) : null}
         </span>
       ) : isPast ? (
         <span className="inline-flex items-center gap-1 text-xs text-destructive">
@@ -484,6 +761,95 @@ function UpcomingRow({ dose }: { dose: ScheduledDose }) {
         </span>
       </span>
       <CircleDashedIcon className="size-3 opacity-50" />
+    </div>
+  );
+}
+
+// One row per prescription. Tap the row → inline menu (Pause / Stop /
+// Mark complete / Resume / Delete). Status changes are reversible so
+// they have no confirm. Delete cascades through logs and is confirmed in
+// an AlertDialog by the parent.
+function PrescriptionRow({
+  med,
+  onChangeStatus,
+  onDelete,
+}: {
+  med: Medication;
+  onChangeStatus: (status: Medication["status"]) => void;
+  onDelete: () => void;
+}) {
+  const isInactive = med.status !== "active";
+  return (
+    <div
+      className={`group flex items-center gap-3 py-2 text-sm ${
+        isInactive ? "opacity-50" : ""
+      }`}
+    >
+      <span className="flex-1 truncate">
+        <span className="font-medium">{med.drugName}</span>{" "}
+        <span className="text-muted-foreground">
+          {Number(med.doseValue).toString()} {med.doseUnit}
+          {med.scheduleTimes.length > 0
+            ? ` · ${med.scheduleTimes.join(" · ")}`
+            : ""}
+          {med.withFood !== "any" ? ` · ${med.withFood} food` : ""}
+        </span>
+        {isInactive ? (
+          <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+            {med.status}
+          </span>
+        ) : null}
+      </span>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            aria-label={`Manage ${med.drugName}`}
+            className="inline-flex size-7 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted/60 hover:text-foreground group-hover:opacity-100 data-[state=open]:opacity-100"
+            type="button"
+          >
+            <MoreHorizontalIcon className="size-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          {med.status === "active" ? (
+            <>
+              <DropdownMenuItem
+                onSelect={() => onChangeStatus("paused")}
+              >
+                <PauseIcon className="size-3.5" />
+                Pause
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => onChangeStatus("stopped")}
+              >
+                <XIcon className="size-3.5" />
+                Mark as stopped
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => onChangeStatus("completed")}
+              >
+                <CheckIcon className="size-3.5" />
+                Mark as completed
+              </DropdownMenuItem>
+            </>
+          ) : (
+            <DropdownMenuItem
+              onSelect={() => onChangeStatus("active")}
+            >
+              <PlayIcon className="size-3.5" />
+              Resume
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onSelect={onDelete}
+          >
+            <XIcon className="size-3.5" />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
