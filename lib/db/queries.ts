@@ -25,16 +25,15 @@ import {
   type DBMessage,
   document,
   documentChunk,
-  family,
   familyMember,
   healthMemory,
   medicalDocument,
   medication,
   medicationLog,
   message,
-  type Suggestion,
   stream,
   suggestion,
+  type Suggestion,
   type User,
   user,
   vital,
@@ -630,69 +629,56 @@ export async function getStreamIdsByChatId({ chatId }: { chatId: string }) {
 // ============================================================
 // Family Queries
 // ============================================================
+//
+// After migration 0004 the `Family` table is gone. Each user has exactly
+// one family, identified by the user itself. The family name lives on
+// `User.familyName`. The list-of-workspaces concept no longer exists.
 
-export async function createFamily({
-  name,
-  createdBy,
-}: {
-  name: string;
-  createdBy: string;
-}) {
-  try {
-    const [created] = await db
-      .insert(family)
-      .values({ name, createdBy })
-      .returning();
-    return created;
-  } catch (_error) {
-    throw new ChatbotError("bad_request:database", "Failed to create family");
-  }
-}
-
-export async function getFamiliesByUserId({ userId }: { userId: string }) {
-  try {
-    return await db
-      .select()
-      .from(family)
-      .where(eq(family.createdBy, userId))
-      .orderBy(desc(family.createdAt));
-  } catch (_error) {
-    throw new ChatbotError(
-      "bad_request:database",
-      "Failed to get families by user id"
-    );
-  }
-}
-
-export async function getFamilyById({ id }: { id: string }) {
+/**
+ * Returns the user's "family" view — basically the user row with the
+ * family name + a placeholder id (which is just the user's id). The id
+ * exists only so legacy callers that take `{ id, name }` keep working.
+ */
+export async function getFamilyByUserId({ userId }: { userId: string }) {
   try {
     const [result] = await db
-      .select()
-      .from(family)
-      .where(eq(family.id, id))
+      .select({
+        id: user.id,
+        name: user.familyName,
+      })
+      .from(user)
+      .where(eq(user.id, userId))
       .limit(1);
     return result ?? null;
   } catch (_error) {
     throw new ChatbotError(
       "bad_request:database",
-      "Failed to get family by id"
+      "Failed to get family by user id"
     );
   }
 }
 
-export async function deleteFamilyById({
-  id,
+/**
+ * Sets the user's family name. This replaces the old "createFamily" flow —
+ * there is no separate family row to create.
+ */
+export async function setUserFamilyName({
   userId,
+  name,
 }: {
-  id: string;
   userId: string;
+  name: string;
 }) {
   try {
     await db
-      .delete(family)
-      .where(and(eq(family.id, id), eq(family.createdBy, userId)));
+      .update(user)
+      .set({ familyName: name, updatedAt: new Date() })
+      .where(eq(user.id, userId));
   } catch (_error) {
-    throw new ChatbotError("bad_request:database", "Failed to delete family");
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to set family name"
+    );
   }
 }
 
@@ -701,13 +687,13 @@ export async function deleteFamilyById({
 // ============================================================
 
 export async function addFamilyMember({
-  familyId,
+  userId,
   name,
   relationship,
   dateOfBirth,
   gender,
 }: {
-  familyId: string;
+  userId: string;
   name: string;
   relationship: string;
   dateOfBirth?: string;
@@ -716,7 +702,7 @@ export async function addFamilyMember({
   try {
     const [created] = await db
       .insert(familyMember)
-      .values({ familyId, name, relationship, dateOfBirth, gender })
+      .values({ userId, name, relationship, dateOfBirth, gender })
       .returning();
     return created;
   } catch (_error) {
@@ -727,12 +713,12 @@ export async function addFamilyMember({
   }
 }
 
-export async function getFamilyMembers({ familyId }: { familyId: string }) {
+export async function getFamilyMembers({ userId }: { userId: string }) {
   try {
     return await db
       .select()
       .from(familyMember)
-      .where(eq(familyMember.familyId, familyId))
+      .where(eq(familyMember.userId, userId))
       .orderBy(asc(familyMember.createdAt));
   } catch (_error) {
     throw new ChatbotError(
@@ -758,9 +744,27 @@ export async function getFamilyMemberById({ id }: { id: string }) {
   }
 }
 
-export async function deleteFamilyMemberById({ id }: { id: string }) {
+/**
+ * Hard-deletes a family member and every dependent row that doesn't have
+ * its own cascade. The schema cascades FamilyMember → HealthMemory,
+ * Medication, MedicationLog, Vital, VitalThreshold, MedicalDocument
+ * (which cascades to DocumentChunk). Chats reference the member via a
+ * nullable FK with `onDelete: "set null"`, so chats survive but become
+ * member-less.
+ *
+ * `userId` is checked against `FamilyMember.userId` (denormalized) so a
+ * caller who isn't the owner of this member gets a no-op (returns 0).
+ */
+export async function deleteFamilyMemberById({
+  id,
+  userId,
+}: {
+  id: string;
+  userId: string;
+}) {
   try {
-    // 1. Fetch all chat IDs associated with this family member
+    // 1. Delete chats that referenced this member (member-less chats are
+    //    useless and we don't want orphans).
     const memberChats = await db
       .select({ id: chat.id })
       .from(chat)
@@ -769,16 +773,23 @@ export async function deleteFamilyMemberById({ id }: { id: string }) {
     const chatIds = memberChats.map((c) => c.id);
 
     if (chatIds.length > 0) {
-      // 2. Delete related records for these chats
       await db.delete(vote).where(inArray(vote.chatId, chatIds));
       await db.delete(message).where(inArray(message.chatId, chatIds));
       await db.delete(stream).where(inArray(stream.chatId, chatIds));
-      // 3. Delete the chats
       await db.delete(chat).where(inArray(chat.id, chatIds));
     }
 
-    // 4. Delete the family member (this will cascade delete health memories)
-    await db.delete(familyMember).where(eq(familyMember.id, id));
+    // 2. Delete the member. The schema cascades through every PHI table.
+    //    We verify ownership via the denormalized `userId` column on
+    //    `FamilyMember` — if a caller passes the wrong `userId` the WHERE
+    //    matches zero rows and we return 0 instead of leaking.
+    const [row] = await db
+      .delete(familyMember)
+      .where(
+        and(eq(familyMember.id, id), eq(familyMember.userId, userId))
+      )
+      .returning({ id: familyMember.id });
+    return Boolean(row);
   } catch (_error) {
     throw new ChatbotError(
       "bad_request:database",
@@ -791,12 +802,23 @@ export async function deleteFamilyMemberById({ id }: { id: string }) {
 // Health Memory Queries
 // ============================================================
 
-export async function getHealthMemories({ memberId }: { memberId: string }) {
+export async function getHealthMemories({
+  memberId,
+  userId,
+}: {
+  memberId: string;
+  userId: string;
+}) {
   try {
     return await db
       .select()
       .from(healthMemory)
-      .where(eq(healthMemory.memberId, memberId))
+      .where(
+        and(
+          eq(healthMemory.memberId, memberId),
+          eq(healthMemory.userId, userId)
+        )
+      )
       .orderBy(asc(healthMemory.category));
   } catch (_error) {
     throw new ChatbotError(
@@ -808,11 +830,13 @@ export async function getHealthMemories({ memberId }: { memberId: string }) {
 
 export async function upsertHealthMemory({
   memberId,
+  userId,
   category,
   content,
   source,
 }: {
   memberId: string;
+  userId: string;
   category: string;
   content: string;
   source: "agent" | "manual";
@@ -834,6 +858,7 @@ export async function upsertHealthMemory({
       .where(
         and(
           eq(healthMemory.memberId, memberId),
+          eq(healthMemory.userId, userId),
           eq(healthMemory.category, category)
         )
       )
@@ -852,6 +877,7 @@ export async function upsertHealthMemory({
     } else {
       await db.insert(healthMemory).values({
         memberId,
+        userId,
         category,
         content,
         source,
@@ -868,6 +894,7 @@ export async function upsertHealthMemory({
         : "unknown";
     console.error("[upsertHealthMemory] DB error", {
       memberId,
+      userId,
       category,
       source,
       code,
@@ -884,13 +911,20 @@ export async function upsertHealthMemory({
 // ============================================================
 // Medical Document Queries
 // ============================================================
+//
+// `userId` is denormalized on every row. All read queries filter on
+// `userId` first; writes require the caller to have already verified
+// ownership (the upload route checks via `assertOwnsMember` before
+// calling `saveMedicalDocument`).
 
 export async function saveMedicalDocument({
+  userId,
   memberId,
   fileName,
   blobPathname,
   fileType,
 }: {
+  userId: string;
   memberId: string;
   fileName: string;
   blobPathname: string;
@@ -899,7 +933,7 @@ export async function saveMedicalDocument({
   try {
     const [created] = await db
       .insert(medicalDocument)
-      .values({ memberId, fileName, blobPathname, fileType })
+      .values({ userId, memberId, fileName, blobPathname, fileType })
       .returning();
     return created;
   } catch (_error) {
@@ -912,12 +946,17 @@ export async function saveMedicalDocument({
 
 export async function getMedicalDocumentsByMemberId({
   memberId,
+  userId,
 }: {
   memberId: string;
+  userId: string;
 }) {
   try {
     // NOTE: blobPathname is intentionally excluded — it must never reach the
     // client. File reads go through the ownership-checked download route by id.
+    // Defense-in-depth: filter on BOTH `userId` (denormalized owner) AND
+    // `memberId` so a caller cannot fetch another member's documents even
+    // if they share the same family.
     return await db
       .select({
         id: medicalDocument.id,
@@ -927,7 +966,12 @@ export async function getMedicalDocumentsByMemberId({
         uploadedAt: medicalDocument.uploadedAt,
       })
       .from(medicalDocument)
-      .where(eq(medicalDocument.memberId, memberId))
+      .where(
+        and(
+          eq(medicalDocument.memberId, memberId),
+          eq(medicalDocument.userId, userId)
+        )
+      )
       .orderBy(desc(medicalDocument.uploadedAt));
   } catch (_error) {
     throw new ChatbotError(
@@ -958,9 +1002,9 @@ export async function getMedicalDocumentById({ id }: { id: string }) {
  * the `MedicalDocument` row, and relies on the `onDelete: "cascade"` FK on
  * `DocumentChunk.documentId` to wipe every embedding for that document.
  *
- * Ownership is enforced through `getOwnedMedicalDocumentById`, so a caller
- * who isn't the creator of the family that owns the member that owns the
- * document gets `null` back — no row, no blob delete, no chunk delete.
+ * Ownership is enforced via the denormalized `medicalDocument.userId`
+ * column — a single-column compare, no joins. A caller who isn't the
+ * document's owner gets `null` back, no row touched, no blob deleted.
  */
 export async function deleteMedicalDocument({
   id,
@@ -999,9 +1043,10 @@ export async function deleteMedicalDocument({
 }
 
 /**
- * Verifies that a medical document belongs to a family member owned by the
- * given user (family.createdBy === userId). Returns the document row if
- * ownership checks out, otherwise null.
+ * Returns the medical document iff the caller's userId matches the
+ * document's denormalized `userId`. Single-column check, no joins, no
+ * subqueries. Returns `null` for both "doesn't exist" and "exists but
+ * not yours" — same shape, no information leak.
  */
 export async function getOwnedMedicalDocumentById({
   id,
@@ -1021,9 +1066,9 @@ export async function getOwnedMedicalDocumentById({
         uploadedAt: medicalDocument.uploadedAt,
       })
       .from(medicalDocument)
-      .innerJoin(familyMember, eq(familyMember.id, medicalDocument.memberId))
-      .innerJoin(family, eq(family.id, familyMember.familyId))
-      .where(and(eq(medicalDocument.id, id), eq(family.createdBy, userId)))
+      .where(
+        and(eq(medicalDocument.id, id), eq(medicalDocument.userId, userId))
+      )
       .limit(1);
     return result ?? null;
   } catch (_error) {
@@ -1039,14 +1084,19 @@ export async function getOwnedMedicalDocumentById({
 // ============================================================
 
 export async function saveDocumentChunks({
+  userId,
+  documentId,
   chunks,
 }: {
-  chunks: { documentId: string; content: string; embedding: number[] }[];
+  userId: string;
+  documentId: string;
+  chunks: { content: string; embedding: number[] }[];
 }) {
   try {
     return await db.insert(documentChunk).values(
       chunks.map((c) => ({
-        documentId: c.documentId,
+        userId,
+        documentId,
         content: c.content,
         embedding: c.embedding,
       }))
@@ -1066,17 +1116,21 @@ export async function saveDocumentChunks({
 export async function similaritySearchChunks({
   queryEmbedding,
   memberId,
+  userId,
   threshold = 0.4,
   limit = 3,
 }: {
   queryEmbedding: number[];
   memberId: string;
+  userId: string;
   threshold?: number;
   limit?: number;
 }) {
   try {
     const vectorStr = `[${queryEmbedding.join(",")}]`;
 
+    // Defense-in-depth: filter on `userId` (denormalized owner) AND
+    // `memberId` so a caller cannot pull another family member's chunks.
     const results = await db
       .select({
         content: documentChunk.content,
@@ -1091,6 +1145,7 @@ export async function similaritySearchChunks({
       .where(
         and(
           eq(medicalDocument.memberId, memberId),
+          eq(medicalDocument.userId, userId),
           sql`1 - (${documentChunk.embedding} <=> ${vectorStr}::vector) > ${threshold}`
         )
       )
@@ -1111,11 +1166,15 @@ export async function similaritySearchChunks({
 //
 // Backing queries for the Today screen, the per-member medication
 // schedule, and the chat's structured lookup tool. Ownership is
-// enforced through `getOwnedFamilyMember` so a caller who isn't the
-// family owner always gets `null` (or an empty array) — no
-// cross-family leakage.
+// enforced via the denormalized `userId` column on every row — a
+// caller who isn't the owner of the member always gets `null` (or
+// an empty array), no cross-family leakage possible.
 // ============================================================
 
+/**
+ * Returns the family member iff it belongs to the given user.
+ * Single-column check, no joins, no subqueries.
+ */
 async function assertOwnsMember({
   memberId,
   userId,
@@ -1126,8 +1185,9 @@ async function assertOwnsMember({
   const [row] = await db
     .select({ id: familyMember.id })
     .from(familyMember)
-    .innerJoin(family, eq(familyMember.familyId, family.id))
-    .where(and(eq(familyMember.id, memberId), eq(family.createdBy, userId)))
+    .where(
+      and(eq(familyMember.id, memberId), eq(familyMember.userId, userId))
+    )
     .limit(1);
   return row ?? null;
 }
@@ -1148,7 +1208,12 @@ export async function getMedicationsByMemberId({
     return await db
       .select()
       .from(medication)
-      .where(and(eq(medication.memberId, memberId)))
+      .where(
+        and(
+          eq(medication.memberId, memberId),
+          eq(medication.userId, userId)
+        )
+      )
       .orderBy(asc(medication.drugName));
   } catch (_error) {
     throw new ChatbotError(
@@ -1159,9 +1224,12 @@ export async function getMedicationsByMemberId({
 }
 
 type MedicationInsert = typeof medication.$inferInsert;
+// Server-managed fields are excluded so the route doesn't have to (and
+// can't) pass them — `userId` comes from the session, `memberId` is
+// derived from `activeMemberId`, and the rest are DB timestamps.
 type MedicationValues = Omit<
   MedicationInsert,
-  "id" | "memberId" | "createdBy" | "createdAt" | "updatedAt"
+  "id" | "userId" | "memberId" | "createdAt" | "updatedAt"
 >;
 
 export async function createMedication({
@@ -1179,7 +1247,7 @@ export async function createMedication({
   try {
     const [created] = await db
       .insert(medication)
-      .values({ ...values, memberId, createdBy: userId })
+      .values({ ...values, userId, memberId })
       .returning();
     return created;
   } catch (_error) {
@@ -1204,7 +1272,9 @@ export async function updateMedicationStatus({
     const [updated] = await db
       .update(medication)
       .set({ status, updatedAt: new Date() })
-      .where(eq(medication.id, id))
+      .where(
+        and(eq(medication.id, id), eq(medication.userId, userId))
+      )
       .returning();
     return updated ?? null;
   } catch (_error) {
@@ -1223,22 +1293,13 @@ export async function deleteMedication({
   userId: string;
 }) {
   try {
-    // Cascade through FK drops every MedicationLog row too. We verify
-    // ownership by joining through the member → family → createdBy chain
-    // in the WHERE clause (the previous version of this function passed
-    // `memberId: ""` to `assertOwnsMember`, which always returned null and
-    // turned every delete into a silent 404).
+    // Cascade through FK drops every MedicationLog row too. Ownership is
+    // enforced via the denormalized `medication.userId` column — a single
+    // column compare, no joins, no subqueries.
     const [row] = await db
       .delete(medication)
       .where(
-        and(
-          eq(medication.id, id),
-          sql`${medication.memberId} IN (
-            SELECT "FamilyMember".id FROM "FamilyMember"
-            INNER JOIN "Family" ON "FamilyMember"."familyId" = "Family".id
-            WHERE "Family"."createdBy" = ${userId}
-          )`
-        )
+        and(eq(medication.id, id), eq(medication.userId, userId))
       )
       .returning({ id: medication.id });
     return Boolean(row);
@@ -1273,6 +1334,7 @@ export async function getMedicationLogsForDay({
       .where(
         and(
           eq(medicationLog.memberId, memberId),
+          eq(medicationLog.userId, userId),
           gte(medicationLog.scheduledFor, dayStart),
           lt(medicationLog.scheduledFor, dayEnd)
         )
@@ -1287,6 +1349,7 @@ export async function getMedicationLogsForDay({
 }
 
 export async function upsertMedicationLog({
+  userId,
   medicationId,
   memberId,
   scheduledFor,
@@ -1296,6 +1359,7 @@ export async function upsertMedicationLog({
   notes,
   source = "manual",
 }: {
+  userId: string;
   medicationId: string;
   memberId: string;
   scheduledFor: Date;
@@ -1309,6 +1373,7 @@ export async function upsertMedicationLog({
     const [row] = await db
       .insert(medicationLog)
       .values({
+        userId,
         medicationId,
         memberId,
         scheduledFor,
@@ -1341,9 +1406,8 @@ export async function upsertMedicationLog({
 /**
  * Hard-deletes a single dose event. Used by the "Undo" affordance on the
  * Today screen when a user taps Take / Skip by mistake. Ownership is
- * checked by joining through `Medication.memberId → FamilyMember →
- * Family.createdBy` so a caller who isn't the family owner gets `false`
- * back, no row touched.
+ * checked against the denormalized `medicationLog.userId` column so a
+ * caller who isn't the owner gets `false` back, no row touched.
  *
  * Idempotent — calling it twice for the same id returns `false` the second
  * time, which the route maps to 404 (the row is already gone).
@@ -1359,14 +1423,7 @@ export async function deleteMedicationLog({
     const [row] = await db
       .delete(medicationLog)
       .where(
-        and(
-          eq(medicationLog.id, id),
-          sql`${medicationLog.memberId} IN (
-            SELECT "FamilyMember".id FROM "FamilyMember"
-            INNER JOIN "Family" ON "FamilyMember"."familyId" = "Family".id
-            WHERE "Family"."createdBy" = ${userId}
-          )`
-        )
+        and(eq(medicationLog.id, id), eq(medicationLog.userId, userId))
       )
       .returning({ id: medicationLog.id });
     return Boolean(row);
@@ -1397,7 +1454,10 @@ export async function getVitalsByMemberId({
     return [];
   }
   try {
-    const where = [eq(vital.memberId, memberId)];
+    const where = [
+      eq(vital.memberId, memberId),
+      eq(vital.userId, userId),
+    ];
     if (type) {
       where.push(eq(vital.type, type));
     }
@@ -1416,7 +1476,7 @@ export async function getVitalsByMemberId({
 }
 
 type VitalInsert = typeof vital.$inferInsert;
-type VitalValues = Omit<VitalInsert, "id" | "memberId" | "createdAt">;
+type VitalValues = Omit<VitalInsert, "id" | "userId" | "memberId" | "createdAt">;
 
 export async function createVital({
   memberId,
@@ -1433,7 +1493,7 @@ export async function createVital({
   try {
     const [created] = await db
       .insert(vital)
-      .values({ ...values, memberId })
+      .values({ ...values, userId, memberId })
       .returning();
     return created;
   } catch (_error) {
@@ -1452,16 +1512,7 @@ export async function deleteVital({
   try {
     const [row] = await db
       .delete(vital)
-      .where(
-        and(
-          eq(vital.id, id),
-          sql`${vital.memberId} IN (
-            SELECT "FamilyMember".id FROM "FamilyMember"
-            INNER JOIN "Family" ON "FamilyMember"."familyId" = "Family".id
-            WHERE "Family"."createdBy" = ${userId}
-          )`
-        )
-      )
+      .where(and(eq(vital.id, id), eq(vital.userId, userId)))
       .returning({ id: vital.id });
     return Boolean(row);
   } catch (_error) {
@@ -1490,7 +1541,8 @@ export async function getVitalThresholdForMember({
       .where(
         and(
           eq(vitalThreshold.memberId, memberId),
-          eq(vitalThreshold.type, type)
+          eq(vitalThreshold.type, type),
+          eq(vitalThreshold.userId, userId)
         )
       )
       .limit(1);
@@ -1504,6 +1556,7 @@ export async function getVitalThresholdForMember({
 }
 
 export async function upsertVitalThreshold({
+  userId,
   memberId,
   type,
   warnMin,
@@ -1511,6 +1564,7 @@ export async function upsertVitalThreshold({
   criticalMin,
   criticalMax,
 }: {
+  userId: string;
   memberId: string;
   type: string;
   warnMin?: number | null;
@@ -1522,6 +1576,7 @@ export async function upsertVitalThreshold({
     const [row] = await db
       .insert(vitalThreshold)
       .values({
+        userId,
         memberId,
         type,
         warnMin: warnMin == null ? null : String(warnMin),

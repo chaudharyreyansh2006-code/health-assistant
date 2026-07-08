@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
   }
 
   const log = await upsertMedicationLog({
+    userId: session.user.id,
     medicationId: parsed.data.medicationId,
     memberId: parsed.data.memberId,
     scheduledFor: new Date(parsed.data.scheduledFor),

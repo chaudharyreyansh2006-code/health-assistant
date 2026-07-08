@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { generateRandomTestUser } from "../helpers";
 
-const protectedPages = ["/", "/chat/00000000-0000-0000-0000-000000000001", "/family", "/family/00000000-0000-0000-0000-000000000001"];
+const protectedPages = ["/", "/chat/00000000-0000-0000-0000-000000000001", "/family"];
 
 test.describe("Authentication Pages", () => {
   test("login page renders correctly", async ({ page }) => {
@@ -46,7 +46,7 @@ test.describe("Protected Routes", () => {
   }
 
   test("protected APIs return 401 for logged-out users", async ({ page }) => {
-    for (const path of ["/api/history", "/api/models", "/api/families"]) {
+    for (const path of ["/api/history", "/api/models", "/api/me/family"]) {
       const response = await page.request.get(path);
       expect(response.status(), path).toBe(401);
     }
@@ -63,7 +63,8 @@ test.describe("Authentication Flow", () => {
     await page.getByRole("button", { name: "Sign up" }).click();
 
     await expect(page).toHaveURL(/\/family$/);
-    await expect(page.getByText("Family Health Portal")).toBeVisible();
+    // The family page renders the user's family name (defaults to "My Family").
+    await expect(page.getByRole("heading", { name: "My Family" })).toBeVisible();
   });
 
   test("signing out sends the user back to login", async ({ page }) => {

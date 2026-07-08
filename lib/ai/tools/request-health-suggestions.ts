@@ -15,8 +15,10 @@ const healthSuggestionsSchema = z.object({
 
 export const requestHealthSuggestions = ({
   memberId,
+  userId,
 }: {
   memberId: string;
+  userId: string;
 }) =>
   tool({
     description:
@@ -36,8 +38,11 @@ export const requestHealthSuggestions = ({
       }
 
       try {
-        // Load the member's health context for personalized suggestions
-        const memories = await getHealthMemories({ memberId });
+        // Load the member's health context for personalized suggestions.
+        // `userId` gates the read so a forged memberId can't pull PHI from
+        // a foreign user (defense in depth — the chat route also checks
+        // ownership before exposing the tool).
+        const memories = await getHealthMemories({ memberId, userId });
 
         const contextBlock = memories
           .map((m) => `[${m.category}]: ${m.content}`)

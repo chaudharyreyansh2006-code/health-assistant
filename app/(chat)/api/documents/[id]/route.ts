@@ -5,8 +5,7 @@ import { isRegularSession } from "@/lib/auth/guards";
 
 /**
  * Hard-deletes a medical document the caller owns. The query layer:
- *   1. Verifies the document belongs to a family member whose family was
- *      created by the signed-in user.
+ *   1. Verifies the document's denormalized `userId` matches the caller.
  *   2. Removes the file from Vercel Blob (private store).
  *   3. Deletes the `MedicalDocument` row, which cascades to every
  *      `DocumentChunk` for that document — so every embedding generated

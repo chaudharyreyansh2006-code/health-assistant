@@ -2,15 +2,27 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { addFamilyMemberAction } from "../actions";
+import { addFamilyMemberAction } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Loader2Icon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 
-export function AddMemberForm({ familyId }: { familyId: string }) {
+/**
+ * Add-member form for the singular `/family` page. After migration 0004
+ * there is no `familyId` to thread through — the server action reads
+ * `session.user.id` and writes a `FamilyMember` row with `userId` set
+ * directly to the caller.
+ */
+export function AddMemberForm() {
   const [name, setName] = useState("");
   const [relationship, setRelationship] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
@@ -32,7 +44,6 @@ export function AddMemberForm({ familyId }: { familyId: string }) {
     setLoading(true);
     try {
       const created = await addFamilyMemberAction({
-        familyId,
         name,
         relationship,
         dateOfBirth: dateOfBirth || undefined,
@@ -52,29 +63,53 @@ export function AddMemberForm({ familyId }: { familyId: string }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 p-5 rounded-2xl border border-border/50 bg-card/30 backdrop-blur-md">
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-4 p-5 rounded-2xl border border-border/50 bg-card/30 backdrop-blur-md"
+    >
       <div className="space-y-1">
-        <h3 className="font-semibold text-foreground text-sm">Add Family Member</h3>
-        <p className="text-xs text-muted-foreground">Create a new health profile within this family.</p>
+        <h3 className="font-semibold text-foreground text-sm">
+          Add Family Member
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Create a new health profile within this family.
+        </p>
       </div>
 
       <div className="space-y-3">
         <div className="space-y-1.5">
-          <Label htmlFor="name" className="text-xs font-medium text-foreground">Name</Label>
+          <Label
+            htmlFor="name"
+            className="text-xs font-medium text-foreground"
+          >
+            Name
+          </Label>
           <Input
+            className="bg-background/50 border-border/50 text-sm focus-visible:ring-primary h-9"
+            disabled={loading}
             id="name"
+            onChange={(e) => setName(e.target.value)}
             placeholder="John Doe"
             value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={loading}
-            className="bg-background/50 border-border/50 text-sm focus-visible:ring-primary h-9"
           />
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="relationship" className="text-xs font-medium text-foreground">Relationship</Label>
-          <Select value={relationship} onValueChange={setRelationship} disabled={loading}>
-            <SelectTrigger id="relationship" className="bg-background/50 border-border/50 text-sm focus-visible:ring-primary h-9">
+          <Label
+            className="text-xs font-medium text-foreground"
+            htmlFor="relationship"
+          >
+            Relationship
+          </Label>
+          <Select
+            disabled={loading}
+            onValueChange={setRelationship}
+            value={relationship}
+          >
+            <SelectTrigger
+              className="bg-background/50 border-border/50 text-sm focus-visible:ring-primary h-9"
+              id="relationship"
+            >
               <SelectValue placeholder="Select relationship" />
             </SelectTrigger>
             <SelectContent>
@@ -91,35 +126,51 @@ export function AddMemberForm({ familyId }: { familyId: string }) {
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <Label htmlFor="dob" className="text-xs font-medium text-foreground">Date of Birth</Label>
+            <Label className="text-xs font-medium text-foreground" htmlFor="dob">
+              Date of Birth
+            </Label>
             <Input
+              className="bg-background/50 border-border/50 text-sm focus-visible:ring-primary h-9"
+              disabled={loading}
               id="dob"
+              onChange={(e) => setDateOfBirth(e.target.value)}
               type="date"
               value={dateOfBirth}
-              onChange={(e) => setDateOfBirth(e.target.value)}
-              disabled={loading}
-              className="bg-background/50 border-border/50 text-sm focus-visible:ring-primary h-9"
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="gender" className="text-xs font-medium text-foreground">Gender</Label>
-            <Select value={gender} onValueChange={setGender} disabled={loading}>
-              <SelectTrigger id="gender" className="bg-background/50 border-border/50 text-sm focus-visible:ring-primary h-9">
+            <Label
+              className="text-xs font-medium text-foreground"
+              htmlFor="gender"
+            >
+              Gender
+            </Label>
+            <Select disabled={loading} onValueChange={setGender} value={gender}>
+              <SelectTrigger
+                className="bg-background/50 border-border/50 text-sm focus-visible:ring-primary h-9"
+                id="gender"
+              >
                 <SelectValue placeholder="Select gender" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="male">Male</SelectItem>
                 <SelectItem value="female">Female</SelectItem>
                 <SelectItem value="non-binary">Non-binary</SelectItem>
-                <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
+                <SelectItem value="prefer-not-to-say">
+                  Prefer not to say
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
         </div>
       </div>
 
-      <Button type="submit" disabled={loading} className="w-full gap-2 mt-2 h-9 text-sm bg-primary text-primary-foreground hover:bg-primary/95 shadow-md">
+      <Button
+        className="w-full gap-2 mt-2 h-9 text-sm bg-primary text-primary-foreground hover:bg-primary/95 shadow-md"
+        disabled={loading}
+        type="submit"
+      >
         {loading ? (
           <Loader2Icon className="size-4 animate-spin" />
         ) : (

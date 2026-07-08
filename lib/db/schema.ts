@@ -50,28 +50,21 @@ export const user = pgTable("User", {
   isAnonymous: boolean("isAnonymous").notNull().default(false),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  // After migration 0004: every user has exactly one family, identified by
+  // the user itself. The `Family` table is gone; the family name lives here.
+  familyName: text("familyName").notNull().default("My Family"),
 });
 
 export type User = InferSelectModel<typeof user>;
 
-// Families: Grouping shared records for family rooms
-export const family = pgTable("Family", {
-  id: uuid("id").primaryKey().notNull().defaultRandom(),
-  name: text("name").notNull(),
-  createdBy: uuid("createdBy").references(() => user.id, {
-    onDelete: "set null",
-  }),
-  createdAt: timestamp("createdAt").notNull().defaultNow(),
-});
-
-export type Family = InferSelectModel<typeof family>;
-
-// Family Members: Individual members under a family workspace
+// Family Members: Individual members under the user's family. The implicit
+// family container is `User` (1 user == 1 family). `userId` is the denormalized
+// ownership column that the rest of the schema filters on.
 export const familyMember = pgTable("FamilyMember", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),
-  familyId: uuid("familyId")
+  userId: uuid("userId")
     .notNull()
-    .references(() => family.id, { onDelete: "cascade" }),
+    .references(() => user.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   relationship: text("relationship").notNull(), // 'self', 'spouse', 'child', 'parent', etc.
   dateOfBirth: date("dateOfBirth"),
@@ -86,6 +79,9 @@ export const healthMemory = pgTable(
   "HealthMemory",
   {
     id: uuid("id").primaryKey().notNull().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
     memberId: uuid("memberId")
       .notNull()
       .references(() => familyMember.id, { onDelete: "cascade" }),
@@ -97,6 +93,7 @@ export const healthMemory = pgTable(
   },
   (table) => ({
     uniqueMemberCategory: unique().on(table.memberId, table.category),
+    userIdx: index("HealthMemory_userId_idx").on(table.userId),
   })
 );
 
@@ -221,8 +218,15 @@ export type Stream = InferSelectModel<typeof stream>;
 // persisted here. Reads go through the authenticated download route which
 // calls `get(pathname, { access: "private" })` server-side, so no public URL
 // to a medical file ever exists.
+//
+// `userId` is denormalized from FamilyMember so ownership checks are a
+// single column compare. Cascade from User → MedicalDocument ensures a
+// user delete wipes every PHI row.
 export const medicalDocument = pgTable("MedicalDocument", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),
+  userId: uuid("userId")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
   memberId: uuid("memberId")
     .notNull()
     .references(() => familyMember.id, { onDelete: "cascade" }),
@@ -234,9 +238,13 @@ export const medicalDocument = pgTable("MedicalDocument", {
 
 export type MedicalDocument = InferSelectModel<typeof medicalDocument>;
 
-// Document Chunks: Vectorized segments of medical documents for RAG
+// Document Chunks: Vectorized segments of medical documents for RAG.
+// `userId` is denormalized from the parent document.
 export const documentChunk = pgTable("DocumentChunk", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),
+  userId: uuid("userId")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
   documentId: uuid("documentId")
     .notNull()
     .references(() => medicalDocument.id, { onDelete: "cascade" }),
@@ -260,6 +268,9 @@ export const medication = pgTable(
   "Medication",
   {
     id: uuid("id").primaryKey().notNull().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
     memberId: uuid("memberId")
       .notNull()
       .references(() => familyMember.id, { onDelete: "cascade" }),
@@ -279,14 +290,12 @@ export const medication = pgTable(
     refillAt: date("refillAt"),
     pharmacy: text("pharmacy"),
     status: varchar("status", { length: 16 }).notNull().default("active"),
-    createdBy: uuid("createdBy").references(() => user.id, {
-      onDelete: "set null",
-    }),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },
   (table) => ({
     memberIdx: index("Medication_memberId_idx").on(table.memberId),
+    userIdx: index("Medication_userId_idx").on(table.userId),
   })
 );
 
@@ -298,6 +307,9 @@ export const medicationLog = pgTable(
   "MedicationLog",
   {
     id: uuid("id").primaryKey().notNull().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
     medicationId: uuid("medicationId")
       .notNull()
       .references(() => medication.id, { onDelete: "cascade" }),
@@ -318,6 +330,7 @@ export const medicationLog = pgTable(
       table.memberId,
       table.scheduledFor
     ),
+    userIdx: index("MedicationLog_userId_idx").on(table.userId),
     uniqScheduledSlot: unique("MedicationLog_medicationId_scheduledFor_unique").on(
       table.medicationId,
       table.scheduledFor
@@ -333,6 +346,9 @@ export const vital = pgTable(
   "Vital",
   {
     id: uuid("id").primaryKey().notNull().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
     memberId: uuid("memberId")
       .notNull()
       .references(() => familyMember.id, { onDelete: "cascade" }),
@@ -354,6 +370,7 @@ export const vital = pgTable(
       table.type,
       table.recordedAt
     ),
+    userIdx: index("Vital_userId_idx").on(table.userId),
   })
 );
 
@@ -365,6 +382,9 @@ export const vitalThreshold = pgTable(
   "VitalThreshold",
   {
     id: uuid("id").primaryKey().notNull().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
     memberId: uuid("memberId")
       .notNull()
       .references(() => familyMember.id, { onDelete: "cascade" }),
@@ -380,6 +400,7 @@ export const vitalThreshold = pgTable(
       table.memberId,
       table.type
     ),
+    userIdx: index("VitalThreshold_userId_idx").on(table.userId),
   })
 );
 

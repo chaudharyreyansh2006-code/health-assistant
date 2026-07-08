@@ -6,7 +6,11 @@ import {
   generateEmbeddings,
 } from "@/lib/ai/document-processor";
 import { isRegularSession } from "@/lib/auth/guards";
-import { saveDocumentChunks, saveMedicalDocument } from "@/lib/db/queries";
+import {
+  getFamilyMemberById,
+  saveDocumentChunks,
+  saveMedicalDocument,
+} from "@/lib/db/queries";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = [
@@ -82,6 +86,14 @@ export async function POST(request: Request) {
   }
 
   try {
+    // 0. Verify the member belongs to this user before we touch Vercel Blob
+    //    or insert any rows. Returns 404 (not 403) on failure so a probing
+    //    caller can't tell whether an id was valid-but-not-mine.
+    const member = await getFamilyMemberById({ id: memberId });
+    if (!member || member.userId !== session.user.id) {
+      return Response.json({ error: "Family member not found" }, { status: 404 });
+    }
+
     // Convert file to buffer once and reuse it for parsing + blob upload.
     const arrayBuffer = await (file as File).arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
@@ -121,19 +133,24 @@ export async function POST(request: Request) {
     // 4. Save file metadata to DB. We persist the blob *pathname* (not a URL)
     //    so the only way to read the file is via the ownership-checked route.
     const dbDoc = await saveMedicalDocument({
+      userId: session.user.id,
       memberId,
       fileName: (file as File).name || sanitizedName,
       blobPathname: blob.pathname,
       fileType,
     });
 
-    // 5. Save chunk vectors to DB.
+    // 5. Save chunk vectors to DB. The denormalized `userId` here makes
+    //    similarity search ownership a single-column compare.
     const dbChunks = chunks.map((content, idx) => ({
-      documentId: dbDoc.id,
       content,
       embedding: embeddings[idx],
     }));
-    await saveDocumentChunks({ chunks: dbChunks });
+    await saveDocumentChunks({
+      userId: session.user.id,
+      documentId: dbDoc.id,
+      chunks: dbChunks,
+    });
 
     return Response.json({
       success: true,

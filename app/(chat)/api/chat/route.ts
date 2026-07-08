@@ -43,6 +43,7 @@ import {
   updateMessage,
 } from "@/lib/db/queries";
 import type { DBMessage } from "@/lib/db/schema";
+import type { FamilyMember } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
 import { checkIpRateLimit } from "@/lib/ratelimit";
 import type { ChatMessage } from "@/lib/types";
@@ -127,9 +128,51 @@ export async function POST(request: Request) {
     const activeMemberId =
       rawMemberId && UUID_RE.test(rawMemberId) ? rawMemberId : undefined;
 
+    // CRITICAL: verify the caller owns this member BEFORE we do anything that
+    // could leak PHI — saving the chat with a foreign memberId, enabling
+    // health tools, or stuffing the member's profile into the system prompt.
+    // Ownership is checked against the denormalized `FamilyMember.userId` —
+    // single column compare, no joins. A foreign memberId is treated as no
+    // member at all (defense in depth: also catches a stale chat with a
+    // member the user no longer owns).
+    let safeActiveMemberId: string | undefined = undefined;
+    let ownedMemberRow: FamilyMember | null = null;
+    if (activeMemberId) {
+      const memberRow = await getFamilyMemberById({ id: activeMemberId });
+      if (memberRow && memberRow.userId === session.user.id) {
+        safeActiveMemberId = activeMemberId;
+        ownedMemberRow = memberRow;
+      } else {
+        console.warn(
+          "[chat] rejected foreign memberId",
+          activeMemberId,
+          "for user",
+          session.user.id,
+        );
+      }
+    }
+
     if (chat) {
       if (chat.userId !== session.user.id) {
         return new ChatbotError("forbidden:chat").toResponse();
+      }
+      // Also reconcile the persisted memberId with the safe one — a chat
+      // can outlive its member (FK is `onDelete: "set null"`), so this is
+      // a no-op in the common case but defends against the rare path
+      // where a chat was somehow saved with a memberId the user no
+      // longer owns.
+      if (chat.memberId && chat.memberId !== safeActiveMemberId) {
+        // Don't mutate the chat here — the request is still in flight.
+        // The next save will use `safeActiveMemberId`. The mismatch is
+        // logged so we can spot a broken record in production logs.
+        console.warn(
+          "[chat] chat memberId drift",
+          chat.id,
+          "stored:",
+          chat.memberId,
+          "resolved:",
+          safeActiveMemberId ?? "null",
+        );
       }
       messagesFromDb = await getMessagesByChatId({ id });
     } else if (message?.role === "user") {
@@ -138,7 +181,7 @@ export async function POST(request: Request) {
         userId: session.user.id,
         title: "New chat",
         visibility: selectedVisibilityType,
-        memberId: activeMemberId,
+        memberId: safeActiveMemberId,
       });
       titlePromise = generateTitleFromUserMessage({ message });
     }
@@ -224,17 +267,28 @@ export async function POST(request: Request) {
         .map((p) => (p as { text: string }).text)
         .join("") || "";
 
-    // Fetch health context, document chunks, and member profile for the active family member
-    const [healthContext, documentContext, activeMember] = await Promise.all([
-      activeMemberId ? fetchHealthContext(activeMemberId) : undefined,
-      activeMemberId && lastUserMessageText
+    // Fetch health context, document chunks, and member profile for the
+    // active family member. The health context + document RAG both filter
+    // on `userId` server-side; the `activeMember` row was already verified
+    // against `memberRow.userId === session.user.id` above (see
+    // `safeActiveMemberId`), so we reuse the verified row here instead
+    // of a second DB call.
+    const [healthContext, documentContext] = await Promise.all([
+      safeActiveMemberId
+        ? fetchHealthContext({
+            memberId: safeActiveMemberId,
+            userId: session.user.id,
+          })
+        : undefined,
+      safeActiveMemberId && lastUserMessageText
         ? fetchDocumentContext({
-            memberId: activeMemberId,
+            memberId: safeActiveMemberId,
+            userId: session.user.id,
             query: lastUserMessageText,
           })
         : undefined,
-      activeMemberId ? getFamilyMemberById({ id: activeMemberId }) : undefined,
     ]);
+    const activeMember = ownedMemberRow;
 
     // Upload chat image attachments to Google Files so the model can
     // reference them as `fileData.fileUri` instead of trying to download
@@ -259,10 +313,13 @@ export async function POST(request: Request) {
           | "urlContext"
         )[] = [];
 
-        // Only enable health tools when there is an active family member.
-        // Without a memberId, the tool would no-op or fail; we don't want
-        // the LLM to call it and then "lie" about the result.
-        if (activeMemberId) {
+        // Only enable health tools when there is an active family member the
+        // caller actually owns. Without a memberId, the tool would no-op or
+        // fail; we don't want the LLM to call it and then "lie" about the
+        // result. `safeActiveMemberId` is `undefined` when the caller passed
+        // a memberId they don't own — same downstream behavior as no member
+        // at all, no PHI exposure.
+        if (safeActiveMemberId) {
           baseActiveTools.push(
             "saveHealthMemory",
             "requestHealthSuggestions",
@@ -288,16 +345,18 @@ export async function POST(request: Request) {
           stopWhen: stepCountIs(5),
           activeTools: baseActiveTools,
           tools: {
-            ...(activeMemberId
+            ...(safeActiveMemberId
               ? {
                   saveHealthMemory: saveHealthMemory({
-                    memberId: activeMemberId,
+                    memberId: safeActiveMemberId,
+                    userId: session.user.id,
                   }),
                   requestHealthSuggestions: requestHealthSuggestions({
-                    memberId: activeMemberId,
+                    memberId: safeActiveMemberId,
+                    userId: session.user.id,
                   }),
                   queryHealthData: queryHealthData({
-                    memberId: activeMemberId,
+                    memberId: safeActiveMemberId,
                     userId: session.user.id,
                   }),
                 }

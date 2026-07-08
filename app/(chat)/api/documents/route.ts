@@ -16,7 +16,10 @@ export async function GET(request: Request) {
   }
 
   try {
-    const docs = await getMedicalDocumentsByMemberId({ memberId });
+    const docs = await getMedicalDocumentsByMemberId({
+      memberId,
+      userId: session.user.id,
+    });
     return Response.json(docs);
   } catch (err: any) {
     return Response.json({ error: err.message || "Failed to fetch documents" }, { status: 500 });

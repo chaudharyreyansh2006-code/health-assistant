@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq, asc } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { healthMemory } from "@/lib/db/schema";
@@ -20,43 +20,71 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 /**
- * Loads all long-term health memory blocks for a family member
- * and formats them as a system prompt section.
+ * Loads all long-term health memory blocks for a family member the caller
+ * owns, and formats them as a system prompt section.
+ *
+ * SECURITY: the `userId` filter on `HealthMemory.userId` (denormalized)
+ * is the only thing preventing this prompt section from exposing another
+ * user's PHI. We intentionally do not trust the `memberId` alone — a
+ * caller who can pass any UUID would otherwise be able to dump the full
+ * health memory of any other user.
  */
-export async function fetchHealthContext(
-  memberId: string
-): Promise<string> {
-  const memories = await db
-    .select({
-      category: healthMemory.category,
-      content: healthMemory.content,
-    })
-    .from(healthMemory)
-    .where(eq(healthMemory.memberId, memberId))
-    .orderBy(asc(healthMemory.category));
+export async function fetchHealthContext({
+  memberId,
+  userId,
+}: {
+  memberId: string;
+  userId: string;
+}): Promise<string> {
+  if (!memberId || !userId) {
+    return "";
+  }
 
-  if (!memories || memories.length === 0) return "";
+  try {
+    const memories = await db
+      .select({
+        category: healthMemory.category,
+        content: healthMemory.content,
+      })
+      .from(healthMemory)
+      .where(
+        and(
+          eq(healthMemory.memberId, memberId),
+          eq(healthMemory.userId, userId),
+        ),
+      )
+      .orderBy(asc(healthMemory.category));
 
-  const promptParts = memories.map((m) => {
-    const label = CATEGORY_LABELS[m.category] || m.category;
-    return `## ${label}\n${m.content}`;
-  });
+    if (!memories || memories.length === 0) return "";
 
-  return `# ACTIVE HEALTH CONTEXT\n\n${promptParts.join("\n\n")}`;
+    const promptParts = memories.map((m) => {
+      const label = CATEGORY_LABELS[m.category] || m.category;
+      return `## ${label}\n${m.content}`;
+    });
+
+    return `# ACTIVE HEALTH CONTEXT\n\n${promptParts.join("\n\n")}`;
+  } catch (err) {
+    // Never let a DB failure leak data — fail closed.
+    console.error("[health-context] fetchHealthContext failed:", err);
+    return "";
+  }
 }
 
 /**
  * Performs pgvector similarity search on the member's medical document chunks
- * and formats matched content for prompt enrichment.
+ * and formats matched content for prompt enrichment. `userId` gates the
+ * underlying query so a caller cannot pull another user's document chunks.
  */
 export async function fetchDocumentContext({
   memberId,
+  userId,
   query,
 }: {
   memberId: string;
+  userId: string;
   query: string;
 }): Promise<string> {
-  if (!query || !memberId) return "";
+  if (!query || !memberId || !userId) return "";
 
   try {
     const { embedding } = await embed({
@@ -72,6 +100,7 @@ export async function fetchDocumentContext({
     const chunks = await similaritySearchChunks({
       queryEmbedding: embedding,
       memberId,
+      userId,
       threshold: 0.35,
       limit: 4,
     });
@@ -79,7 +108,8 @@ export async function fetchDocumentContext({
     if (chunks.length === 0) return "";
 
     const contextParts = chunks.map(
-      (c) => `[From Document: ${c.fileName} (Confidence: ${(c.similarity * 100).toFixed(1)}%)]\n${c.content}`
+      (c) =>
+        `[From Document: ${c.fileName} (Confidence: ${(c.similarity * 100).toFixed(1)}%)]\n${c.content}`,
     );
 
     return `# RELEVANT MEDICAL RECORDS & REPORTS\n\n${contextParts.join("\n\n")}`;

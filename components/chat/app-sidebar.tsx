@@ -4,13 +4,10 @@ import {
   MessageSquareIcon,
   PanelLeftIcon,
   PenSquareIcon,
-  Trash2Icon,
   TrashIcon,
   UsersIcon,
   HeartIcon,
-  UserIcon,
 } from "lucide-react";
-import { deleteFamilyAction } from "@/app/(chat)/family/actions";
 import useSWR from "swr";
 import { fetcher } from "@/lib/utils";
 import { getDicebearAvatarUrl } from "@/lib/utils/avatar";
@@ -53,18 +50,40 @@ import {
 } from "../ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
+/**
+ * The sidebar's "Family Portals" group renders the user's single family
+ * (from `/api/me/family`) and its members. After migration 0004 there is
+ * no list-of-workspaces concept — every user has exactly one family,
+ * identified by `User.id` — so the "Delete workspace" affordance and the
+ * per-family delete dialog are gone.
+ */
+type FamilyResponse = {
+  families: Array<{
+    id: string;
+    name: string;
+    members: Array<{
+      id: string;
+      name: string;
+      gender: string | null;
+    }>;
+  }>;
+};
+
 export function AppSidebar({ user }: { user: User | undefined }) {
   const router = useRouter();
   const { setOpenMobile, toggleSidebar } = useSidebar();
   const { mutate } = useSWRConfig();
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
-  const [deletingFamilyId, setDeletingFamilyId] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
 
-  const { data: families } = useSWR<any[]>(
-    user ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/families` : null,
-    fetcher
+  const { data: familyData } = useSWR<FamilyResponse>(
+    user
+      ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/me/family`
+      : null,
+    fetcher,
   );
+
+  const family = familyData?.families?.[0];
+  const members = family?.members ?? [];
 
   const handleDeleteAll = () => {
     setShowDeleteAllDialog(false);
@@ -78,22 +97,6 @@ export function AppSidebar({ user }: { user: User | undefined }) {
     });
 
     toast.success("All chats deleted");
-  };
-
-  const handleDeleteFamily = async () => {
-    if (!deletingFamilyId) return;
-    setIsDeleting(true);
-    try {
-      await deleteFamilyAction(deletingFamilyId);
-      mutate(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/families`);
-      toast.success("Workspace deleted");
-      router.replace("/family");
-    } catch {
-      toast.error("Failed to delete workspace");
-    } finally {
-      setIsDeleting(false);
-      setDeletingFamilyId(null);
-    }
   };
 
   return (
@@ -169,11 +172,11 @@ export function AppSidebar({ user }: { user: User | undefined }) {
             <SidebarGroup className="py-0">
               <SidebarGroupLabel className="flex items-center justify-between px-2">
                 <span className="text-[10px] font-semibold text-sidebar-foreground/60 tracking-wider uppercase">
-                  Family Portals
+                  Family
                 </span>
                 <Link
-                  href="/family"
                   className="hover:text-primary transition-colors text-[10px] text-muted-foreground"
+                  href="/family"
                   onClick={() => setOpenMobile(false)}
                 >
                   Manage
@@ -181,64 +184,51 @@ export function AppSidebar({ user }: { user: User | undefined }) {
               </SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu className="gap-2">
-                  {families && families.map((fam) => (
-                    <div key={fam.id} className="space-y-1 px-1">
-                      <div className="group/fam flex items-center justify-between rounded-md hover:bg-sidebar-accent/50 transition-colors">
-                        <Link
-                          href={`/family/${fam.id}`}
-                          onClick={() => setOpenMobile(false)}
-                          className="flex items-center gap-2 px-2 py-1 text-xs font-semibold text-foreground/80 hover:text-primary transition-colors flex-1 min-w-0"
-                        >
-                          <UsersIcon className="size-3.5 text-primary/70 shrink-0" />
-                          <span className="truncate">{fam.name}</span>
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeletingFamilyId(fam.id);
-                          }}
-                          className="size-6 flex items-center justify-center rounded-md opacity-0 group-hover/fam:opacity-100 focus:opacity-100 text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-all duration-150 shrink-0 mr-1"
-                          title="Delete workspace"
-                        >
-                          <Trash2Icon className="size-3" />
-                        </button>
-                      </div>
+                  {family && (
+                    <div className="space-y-1 px-1">
+                      <Link
+                        className="flex items-center gap-2 px-2 py-1 text-xs font-semibold text-foreground/80 hover:text-primary transition-colors flex-1 min-w-0"
+                        href="/family"
+                        onClick={() => setOpenMobile(false)}
+                      >
+                        <UsersIcon className="size-3.5 text-primary/70 shrink-0" />
+                        <span className="truncate">{family.name}</span>
+                      </Link>
                       <div className="pl-4 space-y-0.5 border-l border-sidebar-border ml-3">
-                        {fam.members && fam.members.map((mem: any) => (
+                        {members.map((mem) => (
                           <Link
-                            key={mem.id}
-                            href={`/?memberId=${mem.id}`}
-                            onClick={() => setOpenMobile(false)}
                             className="flex items-center gap-1.5 px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/30 rounded-md transition-colors"
+                            href={`/?memberId=${mem.id}`}
+                            key={mem.id}
+                            onClick={() => setOpenMobile(false)}
                           >
                             <img
-                              src={getDicebearAvatarUrl(mem.name, mem.gender)}
                               alt={mem.name}
                               className="size-4 rounded-full bg-muted border border-border/20 shrink-0"
+                              src={getDicebearAvatarUrl(mem.name, mem.gender)}
                             />
                             <span className="truncate">{mem.name}</span>
                           </Link>
                         ))}
-                        {(!fam.members || fam.members.length === 0) && (
+                        {members.length === 0 && (
                           <span className="text-[10px] pl-2 text-muted-foreground/50 italic block">
-                            No members
+                            No members yet
                           </span>
                         )}
                       </div>
                     </div>
-                  ))}
-                  {(!families || families.length === 0) && (
+                  )}
+                  {!family && (
                     <SidebarMenuItem>
                       <SidebarMenuButton
+                        className="text-muted-foreground"
                         onClick={() => {
                           setOpenMobile(false);
                           router.push("/family");
                         }}
-                        className="text-muted-foreground"
                       >
                         <HeartIcon className="size-4" />
-                        <span>Setup Family Portal</span>
+                        <span>Setup Family</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
@@ -271,34 +261,6 @@ export function AppSidebar({ user }: { user: User | undefined }) {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteAll}>
               Delete All
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog
-        onOpenChange={(open) => {
-          if (!open) setDeletingFamilyId(null);
-        }}
-        open={!!deletingFamilyId}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this workspace?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete this family workspace, all its
-              members, health summaries, and medical documents. This action
-              cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteFamily}
-              disabled={isDeleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isDeleting ? "Deleting…" : "Delete Workspace"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

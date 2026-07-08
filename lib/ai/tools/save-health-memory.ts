@@ -58,8 +58,10 @@ function explainDbError(err: unknown): string {
 
 export const saveHealthMemory = ({
   memberId,
+  userId,
 }: {
   memberId: string;
+  userId: string;
 }) =>
   tool({
     description:
@@ -116,7 +118,10 @@ export const saveHealthMemory = ({
       // Re-fetch the existing block so the LLM sees a clear before/after.
       let priorContent: string | null = null;
       try {
-        const existingRows = await getHealthMemories({ memberId });
+        const existingRows = await getHealthMemories({
+          memberId,
+          userId,
+        });
         const existing = existingRows.find(
           (m) => m.category === input.category,
         );
@@ -132,6 +137,7 @@ export const saveHealthMemory = ({
       try {
         const result = await upsertHealthMemory({
           memberId,
+          userId,
           category: input.category,
           content: input.content,
           source: "agent",
