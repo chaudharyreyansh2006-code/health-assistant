@@ -79,11 +79,11 @@ export function AddMemberDialog() {
   return (
     <Dialog onOpenChange={setOpen} open={open}>
       <DialogTrigger asChild>
-        <button className="relative flex flex-col items-center justify-center w-36 h-36 rounded-[2.25rem] bg-zinc-50/50 hover:bg-zinc-100/50 dark:bg-zinc-900/20 dark:hover:bg-zinc-900/60 border border-dashed border-zinc-200 dark:border-zinc-800 hover:border-zinc-350 dark:hover:border-zinc-700 transition-all duration-500 ease-out hover:scale-[1.03] gap-3 group">
-          <div className="p-3.5 rounded-full bg-zinc-100 dark:bg-zinc-800/85 text-muted-foreground group-hover:bg-foreground group-hover:text-background group-hover:scale-105 transition-all duration-500 ease-out">
-            <PlusIcon className="size-5" />
+        <button className="relative flex flex-col items-center justify-center w-20 h-20 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36 rounded-[1.5rem] sm:rounded-[2rem] lg:rounded-[2.25rem] bg-zinc-50/50 hover:bg-zinc-100/50 dark:bg-zinc-900/20 dark:hover:bg-zinc-900/60 border border-dashed border-zinc-200 dark:border-zinc-800 hover:border-zinc-350 dark:hover:border-zinc-700 transition-all duration-500 ease-out hover:scale-[1.03] gap-2 sm:gap-3 group">
+          <div className="p-2.5 sm:p-3 lg:p-3.5 rounded-full bg-zinc-100 dark:bg-zinc-800/85 text-muted-foreground group-hover:bg-foreground group-hover:text-background group-hover:scale-105 transition-all duration-500 ease-out">
+            <PlusIcon className="size-4 sm:size-5" />
           </div>
-          <span className="text-[13px] font-semibold text-muted-foreground group-hover:text-foreground tracking-tight transition-colors duration-300">
+          <span className="text-[10px] sm:text-[12px] lg:text-[13px] font-semibold text-muted-foreground group-hover:text-foreground tracking-tight transition-colors duration-300">
             Add Profile
           </span>
         </button>

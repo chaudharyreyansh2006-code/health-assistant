@@ -52,50 +52,55 @@ export default async function Page({ searchParams }: Props) {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto bg-background/50 relative flex flex-col items-center justify-center min-h-dvh px-6 py-12 md:p-10">
+    <div className="flex-1 overflow-y-auto bg-background/50 relative flex flex-col items-center min-h-dvh px-4 py-8 sm:px-6 sm:py-12 md:p-10">
 
       {/* Decorative background blur elements (iOS style) */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-primary/5 blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-teal-500/5 blur-[120px] pointer-events-none" />
 
-      <div className="w-full max-w-4xl space-y-16 text-center z-10">
+      <div className="w-full max-w-4xl space-y-7 sm:space-y-12 md:space-y-16 text-center z-10">
 
         {/* Portal Greeting */}
-        <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-zinc-100/80 dark:bg-zinc-900/60 border border-zinc-200/50 dark:border-zinc-800/50 text-[12px] font-semibold text-zinc-650 dark:text-zinc-350 backdrop-blur-md">
-            <HeartPulseIcon className="size-4 text-primary" />
+        <div className="space-y-3 sm:space-y-4 md:space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-100/80 dark:bg-zinc-900/60 border border-zinc-200/50 dark:border-zinc-800/50 text-[11px] sm:text-[12px] font-semibold text-zinc-650 dark:text-zinc-350 backdrop-blur-md">
+            <HeartPulseIcon className="size-3.5 sm:size-4 text-primary" />
             <span>Health Portal</span>
           </div>
 
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-foreground bg-clip-text bg-gradient-to-b from-foreground to-foreground/80">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-foreground bg-clip-text bg-gradient-to-b from-foreground to-foreground/80">
             Who&apos;s checking in?
           </h1>
 
-          <p className="text-muted-foreground text-[15px] max-w-xs mx-auto leading-relaxed">
+          <p className="text-muted-foreground text-[13px] sm:text-[15px] max-w-xs mx-auto leading-relaxed">
             Select a profile to start your session or view medical records.
           </p>
         </div>
 
-        {/* Member Cards Grid */}
-        <div className="flex flex-wrap items-center justify-center gap-8 md:gap-10 pt-4">
+        {/* Member Cards Grid — mobile-first responsive.
+            2 columns on phones (3-4 profiles fit in the viewport),
+            3 columns on sm, 4 columns on md+. Avatars scale with the
+            breakpoint; the Chat/Records pill is hidden on phones to
+            save vertical space (the avatar is the primary tappable
+            surface). */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-6 md:gap-8 lg:gap-10 pt-2 sm:pt-4 w-full">
           {members.map((member, index) => {
             const age = getAge(member.dateOfBirth);
 
             return (
               <div
+                className="flex flex-col items-center space-y-2 sm:space-y-3 group animate-in fade-in zoom-in-95 duration-700 fill-mode-both"
                 key={member.id}
-                className="flex flex-col items-center space-y-4 group animate-in fade-in zoom-in-95 duration-700 fill-mode-both"
                 style={{ animationDelay: `${index * 100}ms` }}
               >
                 {/* Profile Squircle Link */}
                 <Link
                   href={`/?memberId=${member.id}`}
-                  className="relative flex items-center justify-center w-36 h-36 rounded-[2.25rem] bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200/80 dark:border-zinc-800/80 hover:border-zinc-350 dark:hover:border-zinc-700 transition-all duration-500 ease-out hover:scale-[1.03] overflow-hidden"
+                  className="relative flex items-center justify-center w-20 h-20 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36 rounded-[1.5rem] sm:rounded-[2rem] lg:rounded-[2.25rem] bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200/80 dark:border-zinc-800/80 hover:border-zinc-350 dark:hover:border-zinc-700 transition-all duration-500 ease-out hover:scale-[1.03] overflow-hidden"
                 >
                   <img
-                    src={getDicebearAvatarUrl(member.name, member.gender)}
                     alt={member.name}
                     className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+                    src={getDicebearAvatarUrl(member.name, member.gender)}
                   />
 
                   {/* Glassy overlay on hover */}
@@ -103,31 +108,44 @@ export default async function Page({ searchParams }: Props) {
                 </Link>
 
                 {/* Profile Details */}
-                <div className="text-center space-y-1 w-40">
-                  <p className="text-base font-semibold text-foreground tracking-tight truncate">
+                <div className="text-center space-y-0.5 w-full max-w-[120px] sm:max-w-[160px] px-1">
+                  <p className="text-[13px] sm:text-base font-semibold text-foreground tracking-tight truncate">
                     {member.name}
                   </p>
 
                   <div className="flex flex-col items-center">
-                    <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                      {member.relationship} {age !== null && `• ${age}Y`}
+                    <span className="text-[9px] sm:text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      {member.relationship}
+                      {age !== null && (
+                        <>
+                          {" "}
+                          <span className="hidden sm:inline">•</span>{" "}
+                          <span className="sm:hidden">
+                            {" · "}
+                          </span>
+                          {age}Y
+                        </>
+                      )}
                     </span>
                   </div>
                 </div>
 
-                {/* Action Shortcuts (Always visible and responsive) */}
-                <div className="flex items-center gap-1 p-1 bg-zinc-100/85 dark:bg-zinc-900/40 border border-zinc-200/60 dark:border-zinc-800/60 rounded-full w-[172px] h-8 transition-colors">
+                {/* Action Shortcuts — hidden on mobile (the avatar IS
+                    the action; tapping it opens the chat). The pill is
+                    still useful on tablet+ where users may want a more
+                    explicit secondary "Records" route. */}
+                <div className="hidden sm:flex items-center gap-1 p-1 bg-zinc-100/85 dark:bg-zinc-900/40 border border-zinc-200/60 dark:border-zinc-800/60 rounded-full w-[172px] h-8 transition-colors">
                   <Link
-                    href={`/?memberId=${member.id}`}
                     className="flex-1 h-6 inline-flex items-center justify-center gap-1 rounded-full text-[11px] font-bold text-foreground hover:bg-white dark:hover:bg-zinc-800 transition-all duration-200"
+                    href={`/?memberId=${member.id}`}
                   >
                     <MessageSquareIcon className="size-3 text-zinc-500" />
                     <span>Chat</span>
                   </Link>
                   <div className="w-[1px] h-3 bg-zinc-200/80 dark:bg-zinc-800/80" />
                   <Link
-                    href={`/family?memberId=${member.id}`}
                     className="flex-1 h-6 inline-flex items-center justify-center gap-1 rounded-full text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-white dark:hover:bg-zinc-800 transition-all duration-200"
+                    href={`/family?memberId=${member.id}`}
                   >
                     <FolderHeartIcon className="size-3 text-zinc-400" />
                     <span>Records</span>
@@ -137,17 +155,24 @@ export default async function Page({ searchParams }: Props) {
             );
           })}
 
-          {/* Quick Onboarding Add Card */}
-          <div className="animate-in fade-in zoom-in-95 duration-700 fill-mode-both" style={{ animationDelay: `${members.length * 100}ms` }}>
+          {/* Quick Onboarding Add Card — same sizing as a member card so
+              the grid stays balanced on every breakpoint. */}
+          <div
+            className="animate-in fade-in zoom-in-95 duration-700 fill-mode-both"
+            style={{ animationDelay: `${members.length * 100}ms` }}
+          >
             <AddMemberDialog />
           </div>
         </div>
 
-        {/* Global Dashboard Navigation */}
-        <div className="pt-8 mt-8 max-w-sm mx-auto animate-in fade-in duration-1000 delay-500 fill-mode-both">
+        {/* Global Dashboard Navigation — hidden on the smallest phones
+            (the cards are already tap targets, the dedicated CTA just
+            adds visual noise). Tablet+ keeps it as a quick way to reach
+            the family workspace. */}
+        <div className="pt-4 sm:pt-8 mt-0 sm:mt-4 max-w-sm mx-auto animate-in fade-in duration-1000 delay-500 fill-mode-both hidden sm:block">
           <Link
+            className="inline-flex items-center justify-center gap-2.5 w-full py-3 sm:py-3.5 px-5 text-[13px] sm:text-sm font-semibold text-muted-foreground hover:text-foreground bg-zinc-100/50 hover:bg-zinc-200/50 dark:bg-zinc-900/40 dark:hover:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-800/80 rounded-2xl transition-all duration-300"
             href="/family"
-            className="inline-flex items-center justify-center gap-2.5 w-full py-3.5 px-5 text-sm font-semibold text-muted-foreground hover:text-foreground bg-zinc-100/50 hover:bg-zinc-200/50 dark:bg-zinc-900/40 dark:hover:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-800/80 rounded-2xl transition-all duration-300"
           >
             <UsersIcon className="size-4 text-zinc-400" />
             <span>Manage Family & Records</span>
