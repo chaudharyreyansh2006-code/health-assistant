@@ -9,7 +9,6 @@ import {
   ClockIcon,
   PillIcon,
   PlusIcon,
-  SearchIcon,
   SirenIcon,
   StethoscopeIcon,
   TrendingDownIcon,
@@ -17,14 +16,13 @@ import {
   XIcon,
 } from "lucide-react";
 import {
-  CommandDialog,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-} from "@/components/ui/command";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { fetcher } from "@/lib/utils";
 import { AddMedicationDialog } from "./add-medication-dialog";
@@ -127,7 +125,6 @@ export function TodayScreen({ memberId }: { memberId: string }) {
   );
   const vitals = vitalsData?.vitals ?? [];
 
-  const [paletteOpen, setPaletteOpen] = useState(false);
   const [addMedOpen, setAddMedOpen] = useState(false);
   const [logVitalType, setLogVitalType] = useState<Vital["type"] | null>(null);
 
@@ -278,72 +275,44 @@ export function TodayScreen({ memberId }: { memberId: string }) {
 
       {/* Floating + button */}
       <div className="sticky bottom-2 mt-2 flex justify-end">
-        <Button
-          className="rounded-full px-4"
-          onClick={() => setPaletteOpen(true)}
-          size="sm"
-        >
-          <PlusIcon className="size-3.5" />
-          Log or add
-        </Button>
-      </div>
-
-      <CommandDialog onOpenChange={setPaletteOpen} open={paletteOpen}>
-        <CommandInput placeholder="What do you want to log?" />
-        <CommandList>
-          <CommandEmpty>Nothing here yet.</CommandEmpty>
-          <CommandGroup heading="Log a reading">
-            <CommandItem
-              onSelect={() => {
-                setPaletteOpen(false);
-                setLogVitalType("bp");
-              }}
-            >
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button className="rounded-full px-4" size="sm">
+              <PlusIcon className="size-3.5" />
+              Log or add
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              Log a reading
+            </DropdownMenuLabel>
+            <DropdownMenuItem onSelect={() => setLogVitalType("bp")}>
               <StethoscopeIcon className="size-3.5" />
-              Log blood pressure
-            </CommandItem>
-            <CommandItem
-              onSelect={() => {
-                setPaletteOpen(false);
-                setLogVitalType("glucose");
-              }}
-            >
+              Blood pressure
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setLogVitalType("glucose")}>
               <StethoscopeIcon className="size-3.5" />
-              Log glucose
-            </CommandItem>
-            <CommandItem
-              onSelect={() => {
-                setPaletteOpen(false);
-                setLogVitalType("weight");
-              }}
-            >
+              Glucose
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setLogVitalType("weight")}>
               <StethoscopeIcon className="size-3.5" />
-              Log weight
-            </CommandItem>
-            <CommandItem
-              onSelect={() => {
-                setPaletteOpen(false);
-                setLogVitalType("spo2");
-              }}
-            >
+              Weight
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setLogVitalType("spo2")}>
               <StethoscopeIcon className="size-3.5" />
-              Log SpO2
-            </CommandItem>
-          </CommandGroup>
-          <CommandSeparator />
-          <CommandGroup heading="Schedule">
-            <CommandItem
-              onSelect={() => {
-                setPaletteOpen(false);
-                setAddMedOpen(true);
-              }}
-            >
+              SpO₂
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              Schedule
+            </DropdownMenuLabel>
+            <DropdownMenuItem onSelect={() => setAddMedOpen(true)}>
               <PillIcon className="size-3.5" />
               Add a medication
-            </CommandItem>
-          </CommandGroup>
-        </CommandList>
-      </CommandDialog>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
       <AddMedicationDialog
         memberId={memberId}
