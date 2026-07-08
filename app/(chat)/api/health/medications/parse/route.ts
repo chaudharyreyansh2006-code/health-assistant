@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     const { text } = await generateText({
       // Use Flash for sub-second latency. The user is sitting in front of
       // a dialog waiting for a parse.
-      model: getLanguageModel("gemini-2.5-flash"),
+      model: getLanguageModel("gemini-3.1-flash-lite"),
       prompt: PARSE_PROMPT.replace("{INPUT}", body.data.text.trim()),
     });
 

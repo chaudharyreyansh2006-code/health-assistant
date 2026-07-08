@@ -49,7 +49,7 @@ export const requestHealthSuggestions = ({
           .join("\n\n");
 
         const { text } = await generateText({
-          model: getLanguageModel("gemini-2.5-flash"),
+          model: getLanguageModel("gemini-3.1-flash-lite"),
           prompt: `You are a careful, evidence-based health advisor. Based on the following health profile and the requested focus area, generate 3-5 specific, actionable health suggestions for this family member.
 
 Each suggestion must include:

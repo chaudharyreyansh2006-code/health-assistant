@@ -300,7 +300,7 @@ ${healthContext}`;
 
   // 3. Initiate the Stream
   const result = streamText({
-    model: google('gemini-2.5-flash'),
+    model: google('gemini-3.1-flash-lite'),
     messages,
     system: systemInstruction,
     tools: {
@@ -519,7 +519,7 @@ export async function compressSessionHistory(chatId: string) {
 
   // 4. Request summary update from Gemini
   const { text } = await generateText({
-    model: google('gemini-2.5-flash'),
+    model: google('gemini-3.1-flash-lite'),
     prompt: `Review the following running dialogue summary and the new transcript segment. Update the summary to incorporate the new details as a bulleted log. Keep it brief and focused on medical concerns, symptoms, advice given, and follow-ups.
 
 ${prevSummary}New Segment:

@@ -14,7 +14,8 @@
 -- If you run these in the wrong order you either lose data or break the
 -- NOT NULL constraint on rows that don't yet have a `userId`.
 
-BEGIN;
+-- (Drizzle wraps this file in a transaction automatically — do NOT add
+-- an explicit BEGIN; / COMMIT; here, that would defeat atomicity.)
 
 -- 1. Add new columns (nullable, FK to User)
 ALTER TABLE "User"            ADD COLUMN IF NOT EXISTS "familyName" text;
@@ -103,4 +104,3 @@ CREATE INDEX IF NOT EXISTS "HealthMemory_userId_idx"    ON "HealthMemory"("userI
 ALTER TABLE "FamilyMember" DROP COLUMN IF EXISTS "familyId";
 DROP TABLE IF EXISTS "Family";
 
-COMMIT;

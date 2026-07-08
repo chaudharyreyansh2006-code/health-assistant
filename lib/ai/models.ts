@@ -24,14 +24,14 @@ export type ChatModel = {
 
 export const chatModels: ChatModel[] = [
   {
-    id: "gemini-3-flash-preview",
-    name: "Gemini 3 Flash",
+    id: "gemini-3.1-flash-lite",
+    name: "Gemini 3.1 Flash",
     provider: "google",
     description: "Fast and capable model for health conversations",
   },
   {
-    id: "gemini-3.5-flash",
-    name: "Gemini 3.5 Flash",
+    id: "gemini-3-flash-preview",
+    name: "Gemini 3 Flash",
     provider: "google",
     description: "Advanced model for complex health analysis",
   },
